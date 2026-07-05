@@ -1,6 +1,7 @@
 "use client";
 
 import { useStreamUrl } from "@/hooks/useStreamUrl";
+import { useMediaSession } from "@/hooks/useMediaSession";
 import { PlayerClient } from "@/components/player/PlayerClient";
 
 export function WatchContent({
@@ -10,6 +11,7 @@ export function WatchContent({
   movie: { slug: string; id: string } | null;
 }) {
   const { data, error, isLoading } = useStreamUrl(movieId);
+  useMediaSession(defaultTitle, "MovieZone", defaultPoster);
 
   if (isLoading) {
     return (

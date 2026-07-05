@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/authOptions";
 import { TopNav } from "./_components/TopNav";
 import { BottomTabs } from "./_components/BottomTabs";
+import { PwaInstaller } from "@/components/PwaInstaller";
 
 /**
  * Wraps all public routes. Server-side gate: pending/unapproved users without an
@@ -19,6 +20,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
         <TopNav />
         <div className="flex-1">{children}</div>
         <BottomTabs />
+        <PwaInstaller />
       </div>
     );
   }
@@ -35,6 +37,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <TopNav />
       <div className="flex-1">{children}</div>
       <BottomTabs />
+      <PwaInstaller />
     </div>
   );
 }
