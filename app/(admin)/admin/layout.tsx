@@ -16,7 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .eq("status", "pending");
 
   return (
-    <div className="flex min-h-screen bg-black text-white">
+    <div data-role={session.user.role} className="flex min-h-screen bg-black text-white">
       <AdminSidebar pendingCount={count ?? 0} role={session.user.role} />
       <main className="ml-0 flex-1 p-6 md:ml-56 lg:p-8">{children}</main>
     </div>

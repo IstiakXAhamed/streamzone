@@ -1,14 +1,19 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { HeroRow } from "@/components/home/CarouselRow";
+import { CarouselRow } from "@/components/home/CarouselRow";
 import type { MovieRow } from "@/types/db";
 
-async function getFeatured(): Promise<MovieRow[]> {
+async function getPublicMovies(featured?: boolean): Promise<MovieRow[]> {
   try {
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from("movies")
       .select("*")
+      .eq("is_public", true)
       .order("featured", { ascending: false })
-      .order("views_count", { ascending: false })
-      .limit(10);
+      .order("created_at", { ascending: false })
+      .limit(40);
+    if (featured) query = query.eq("featured", true);
+    const { data, error } = await query;
     if (error) return [];
     return (data ?? []) as MovieRow[];
   } catch {
@@ -17,8 +22,11 @@ async function getFeatured(): Promise<MovieRow[]> {
 }
 
 export default async function HomePage() {
-  const featured = await getFeatured();
-  const hasMovies = featured.length > 0;
+  const [featured, recent] = await Promise.all([
+    getPublicMovies(true),
+    getPublicMovies(false),
+  ]);
+  const hasMovies = recent.length > 0;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-8">
@@ -61,10 +69,10 @@ export default async function HomePage() {
         </section>
       ) : (
         <section className="space-y-8">
-          <h2 className="text-2xl font-bold tracking-tight">Featured</h2>
-          <p className="text-[color:var(--color-text-secondary)]">
-            Movies will render here once Phase 1 wires the carousels.
-          </p>
+          {featured.length > 0 && (
+            <HeroRow title="Featured" movies={featured} />
+          )}
+          <CarouselRow title="Recently added" movies={recent} />
         </section>
       )}
     </main>
