@@ -1,65 +1,72 @@
-import Image from "next/image";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import type { MovieRow } from "@/types/db";
 
-export default function Home() {
+async function getFeatured(): Promise<MovieRow[]> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("movies")
+      .select("*")
+      .order("featured", { ascending: false })
+      .order("views_count", { ascending: false })
+      .limit(10);
+    if (error) return [];
+    return (data ?? []) as MovieRow[];
+  } catch {
+    return [];
+  }
+}
+
+export default async function HomePage() {
+  const featured = await getFeatured();
+  const hasMovies = featured.length > 0;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-8">
+      {!hasMovies ? (
+        <section className="flex min-h-[60vh] flex-col justify-center gap-4 text-center">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">
+            Welcome to <span className="text-[color:var(--color-brand)]">MovieZone</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mx-auto max-w-prose text-[color:var(--color-text-secondary)]">
+            Your private movie hub is ready. Once the first movie is ingested
+            from Google Drive, the homepage will come alive with hero carousels,
+            continue-watch, and trending rows — every one of them tuned for the
+            phone you&apos;re holding right now.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+          <div className="mt-6 rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-2)]/60 p-6 text-left text-sm">
+            <p className="font-semibold text-white">Setup checklist</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-[color:var(--color-text-secondary)]">
+              <li>
+                Copy <code className="text-[color:var(--color-brand)]">.env.local.example</code> to{" "}
+                <code className="text-[color:var(--color-brand)]">.env.local</code> and fill in
+                your Supabase + Drive credentials.
+              </li>
+              <li>
+                Run the database migration that creates{" "}
+                <code className="text-[color:var(--color-brand)]">users</code>,{" "}
+                <code className="text-[color:var(--color-brand)]">movies</code>, and{" "}
+                <code className="text-[color:var(--color-brand)]">watch_history</code>.
+              </li>
+              <li>
+                Pull up <code className="text-[color:var(--color-brand)]">/api/smoke</code> to
+                verify backend reachability.
+              </li>
+              <li>
+                Log in as your configured superadmin and head to{" "}
+                <code className="text-[color:var(--color-brand)]">/admin/movies</code> to ingest
+                the first title.
+              </li>
+            </ul>
+          </div>
+        </section>
+      ) : (
+        <section className="space-y-8">
+          <h2 className="text-2xl font-bold tracking-tight">Featured</h2>
+          <p className="text-[color:var(--color-text-secondary)]">
+            Movies will render here once Phase 1 wires the carousels.
+          </p>
+        </section>
+      )}
+    </main>
   );
 }

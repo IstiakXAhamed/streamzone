@@ -1,26 +1,95 @@
 @import "tailwindcss";
 
+/* Tailwind v4 token layer — design tokens for the whole app. */
+@theme {
+  --color-brand: #e50914;
+  --color-brand-contrast: #ffffff;
+
+  --color-surface-0: #000000;
+  --color-surface-1: #0a0a0a;
+  --color-surface-2: #141414;
+  --color-surface-3: #1f1f1f;
+  --color-surface-4: #2a2a2a;
+
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+
+  --color-text-primary: #f5f5f5;
+  --color-text-secondary: #b3b3b3;
+  --color-text-tertiary: #777777;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 0.875rem;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --background: var(--color-surface-0);
+  --foreground: var(--color-text-primary);
+
+  /* Not-yet-exposed dynamic theme hooks — light mode placeholder */
+  --mz-bg: var(--color-surface-0);
+  --mz-fg: var(--color-text-primary);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+html {
+  background-color: var(--color-surface-0);
+  color: var(--color-text-primary);
+  /* respect iOS safe areas when the app is installed as a PWA */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100%;
+  font-family: var(--font-sans);
+  background-color: var(--background);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+  /* prevent rubber-band showing white behind dark bg on iOS PWA */
+  background-color: #000;
+}
+
+/* Dark-themed inputs everywhere */
+input,
+textarea,
+select {
+  color-scheme: dark;
+}
+
+/* Carousel snap + hide scrollbar */
+.mz-snap-x {
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.mz-snap-x::-webkit-scrollbar {
+  display: none;
+}
+.mz-snap-start {
+  scroll-snap-align: start;
+}
+
+/* Skeleton shimmer placeholder */
+.mz-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-2) 0%,
+    var(--color-surface-3) 40%,
+    var(--color-surface-2) 80%
+  );
+  background-size: 200% 100%;
+  animation: mz-shimmer 1.3s ease-in-out infinite;
+}
+@keyframes mz-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
