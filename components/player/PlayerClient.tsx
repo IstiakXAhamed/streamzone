@@ -47,7 +47,7 @@ export function PlayerClient({ src, title, poster, subtitleSrc, subtitleLabel, m
     setShowControls((s) => {
       const next = !s;
       if (next) {
-        hideTimer.current && clearTimeout(hideTimer.current);
+        if (hideTimer.current) clearTimeout(hideTimer.current);
         hideTimer.current = setTimeout(() => setShowControls(false), 3200);
       }
       return next;
