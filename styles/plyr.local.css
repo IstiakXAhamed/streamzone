@@ -1,0 +1,33 @@
+/* Minimal Plyr overrides tweak to MovieZone's dark theme. The base plyr styles
+ * come from `plyr-react` at runtime; this file only patches palette + sizing.
+ * See `components/player/PlayerClient.tsx` for the import path. */
+
+:root {
+  --plyr-color-main: var(--color-brand, #e50914);
+  --plyr-video-background: #000;
+}
+
+.plyr {
+  --plyr-control-spacing: 12px;
+  height: 100%;
+}
+
+.plyr--video {
+  background: #000;
+}
+
+.plyr__controls {
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+}
+
+.plyr--full-ui input[type="range"] {
+  color: var(--plyr-color-main);
+}
+
+.plyr__control--overlaid {
+  background: rgba(229, 9, 20, 0.9);
+}
+
+.plyr__control--overlaid:hover {
+  background: rgba(229, 9, 20, 1);
+}
