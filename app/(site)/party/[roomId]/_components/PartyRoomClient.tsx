@@ -22,8 +22,14 @@ export function PartyRoomClient({
 
   const [participants, setParticipants] = useState<PresenceUser[]>([]);
   const [chat, setChat] = useState<RoomChatItem[]>([]);
+  const [lastVoiceMessage, setLastVoiceMessage] = useState<PartyMessage | null>(null);
 
   const partyRef = useRef<PartyHandle | null>(null);
+  const sendRef = useRef<((msg: Omit<PartyMessage, "at">) => PartyMessage) | null>(null);
+
+  const handleSend = useCallback((msg: Omit<PartyMessage, "at">) => {
+    sendRef.current?.(msg);
+  }, []);
 
   // Join channel + route messages
   useEffect(() => {
@@ -37,7 +43,11 @@ export function PartyRoomClient({
       if (msg.kind === "chat" && msg.by !== identityId) {
         setChat((c) => [...c, { by: msg.by, name: msg.name ?? msg.by, text: msg.text ?? "", at: msg.at }]);
       }
+      if (msg.kind === "voice-sdp" || msg.kind === "voice-ice") {
+        setLastVoiceMessage(msg);
+      }
     });
+    sendRef.current = party.send;
     const sync = window.setInterval(() => {
       flattenPresence(party.presence());
     }, 2500);
@@ -95,7 +105,7 @@ export function PartyRoomClient({
             movieId={movieId}
             movie={{ slug: "party", id: movieId }}
           />
-          <VoiceStrip roomId={roomId} identityId={identityId} identityName={identityName} />
+          <VoiceStrip roomId={roomId} identityId={identityId} participants={participants} send={handleSend} onMessage={lastVoiceMessage ?? ({ kind: "chat", by: "", text: "", at: 0 })} />
         </div>
         <aside className="flex flex-col gap-3">
           <section className="rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-1)] p-3">
