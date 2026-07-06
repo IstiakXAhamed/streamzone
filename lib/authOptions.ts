@@ -32,16 +32,25 @@ async function verifyCredentials(email: string, password: string): Promise<strin
  */
 async function resolveUserRole(email: string): Promise<{ role: Role; status: UserStatus }> {
   const normalized = emailOf(email);
-  if (SUPERADMIN_EMAIL && normalized === emailOf(SUPERADMIN_EMAIL)) {
-    return { role: "superadmin", status: "approved" };
-  }
+
+  // Always check the DB row first — it's the source of truth.
   const { data } = await supabaseAdmin
     .from("users")
     .select("role,status")
     .ilike("email", normalized)
     .maybeSingle();
-  if (!data) return { role: "user", status: "pending" };
-  return { role: data.role as Role, status: data.status as UserStatus };
+
+  if (data) {
+    return { role: data.role as Role, status: data.status as UserStatus };
+  }
+
+  // No DB row yet — bootstrap from env if this is the configured superadmin.
+  if (SUPERADMIN_EMAIL && normalized === emailOf(SUPERADMIN_EMAIL)) {
+    return { role: "superadmin", status: "approved" };
+  }
+
+  // Brand-new user → pending until an admin approves.
+  return { role: "user", status: "pending" };
 }
 
 export const authOptions: NextAuthOptions = {
