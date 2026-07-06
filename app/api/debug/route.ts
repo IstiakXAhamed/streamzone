@@ -37,7 +37,7 @@ export async function GET() {
     serviceRoleKeyPrefix: process.env.SUPABASE_SERVICE_ROLE_KEY
       ? process.env.SUPABASE_SERVICE_ROLE_KEY.slice(0, 6) + "..."
       : "(not set)",
-    anonKeyIsSet: <REDACTED> process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    anonKeyIsSet: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "(not set)",
     expectedCallbackUrl: callbackUrl,
   });
