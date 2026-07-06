@@ -1,39 +1,31 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { authOptions } from "@/lib/authOptions";
 import type { SessionUser } from "@/lib/auth";
 import type { Role } from "@/types/db";
 
 /**
- * Auth guard for Route Handlers. Uses the NextAuth session + service-role DB
- * lookup (bypasses RLS). Returns the user, or a NextResponse error the caller
- * can `return` directly from the handler.
+ * Auth guard for Route Handlers. Trusts the NextAuth JWT for role/status
+ * (signed with NEXTAUTH_SECRET, can't be forged client-side) and only verifies
+ * the user has a valid session — no DB lookup. This avoids RLS/permission issues
+ * while keeping admin-only APIs protected from non-admins.
  */
 export async function requireUser(): Promise<
   { user: SessionUser; error: null } | { user: null; error: NextResponse }
 > {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
+
+  if (!session?.user) {
     return {
       user: null,
       error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     };
   }
 
-  const { data: row } = await supabaseAdmin
-    .from("users")
-    .select("id,email,name,avatar_url,role,status")
-    .ilike("email", session.user.email)
-    .maybeSingle();
+  const jwtRole = (session.user as any)?.role as Role | undefined;
+  const jwtStatus = (session.user as any)?.status as string | undefined;
 
-  if (!row) {
-    return {
-      user: null,
-      error: NextResponse.json({ error: "User record not found" }, { status: 403 }),
-    };
-  }
-  if (row.status === "pending") {
+  if (jwtStatus === "pending") {
     return {
       user: null,
       error: NextResponse.json(
@@ -42,7 +34,7 @@ export async function requireUser(): Promise<
       ),
     };
   }
-  if (row.status === "suspended") {
+  if (jwtStatus === "suspended") {
     return {
       user: null,
       error: NextResponse.json({ error: "Your account has been suspended." }, { status: 403 }),
@@ -50,12 +42,12 @@ export async function requireUser(): Promise<
   }
 
   const user: SessionUser = {
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    image: row.avatar_url,
-    role: row.role as Role,
-    status: row.status as SessionUser["status"],
+    id: (session.user as any)?.id ?? "",
+    email: session.user.email ?? "",
+    name: session.user.name,
+    image: session.user.image,
+    role: jwtRole ?? "user",
+    status: (jwtStatus as SessionUser["status"]) ?? "approved",
   };
   return { user, error: null };
 }
