@@ -13,7 +13,7 @@ const navLinks = [
 ];
 
 export function TopNav() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [open, setOpen] = useState(false);
 
   return (
@@ -41,7 +41,9 @@ export function TopNav() {
           >
             <Search size={18} />
           </Link>
-          {session?.user ? (
+          {status === "loading" ? (
+            <div className="h-8 w-8 rounded-full bg-[color:var(--color-surface-2)]" />
+          ) : session?.user ? (
             <>
               <Link href="/profile" className="hidden h-8 w-8 overflow-hidden rounded-full bg-[color:var(--color-surface-3)] sm:block" title={session.user.email ?? "profile"}>
                 {session.user.image ? (
