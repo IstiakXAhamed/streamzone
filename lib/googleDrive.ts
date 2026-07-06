@@ -21,7 +21,7 @@ function getServiceAccount(): Record<string, unknown> {
   return cachedSaKey;
 }
 
-/** A Google service-account access token scoped to Drive readonly. */
+/** A Google service-account access token scoped to full Drive access (upload + read). */
 async function getAccessToken(): Promise<string> {
   const sa = getServiceAccount();
   const saEmail = sa.client_email as string;
@@ -30,7 +30,7 @@ async function getAccessToken(): Promise<string> {
   const header = { alg: "RS256", typ: "JWT" };
   const payload = {
     iss: saEmail,
-    scope: "https://www.googleapis.com/auth/drive.readonly",
+    scope: "https://www.googleapis.com/auth/drive",
     aud: "https://oauth2.googleapis.com/token",
     iat: now,
     exp: now + 3600,
