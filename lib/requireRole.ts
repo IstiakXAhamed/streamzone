@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { authOptions } from "@/lib/authOptions";
 import type { SessionUser } from "@/lib/auth";
 import type { Role } from "@/types/db";
 
 /**
- * Auth guard for Route Handlers. Uses the NextAuth session (Google OAuth or
- * credentials) as the source of truth, then looks up the user's role/status in
- * Supabase. Returns the user, or a NextResponse error the caller can `return`
- * directly from the handler.
+ * Auth guard for Route Handlers. Uses the NextAuth session + service-role DB
+ * lookup (bypasses RLS). Returns the user, or a NextResponse error the caller
+ * can `return` directly from the handler.
  */
 export async function requireUser(): Promise<
   { user: SessionUser; error: null } | { user: null; error: NextResponse }
@@ -22,8 +21,7 @@ export async function requireUser(): Promise<
     };
   }
 
-  const supabase = await createClient();
-  const { data: row } = await supabase
+  const { data: row } = await supabaseAdmin
     .from("users")
     .select("id,email,name,avatar_url,role,status")
     .ilike("email", session.user.email)
