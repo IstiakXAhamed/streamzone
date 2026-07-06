@@ -28,6 +28,10 @@ export async function POST(req: Request) {
     });
     return NextResponse.json(result);
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 502 });
+    console.error("upload-start failed:", e);
+    return NextResponse.json(
+      { error: (e as Error).message, stack: (e as Error).stack },
+      { status: 500 },
+    );
   }
 }
