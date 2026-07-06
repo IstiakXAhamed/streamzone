@@ -1,7 +1,11 @@
+import { getServerSession } from "next-auth";
+import Link from "next/link";
+import { authOptions } from "@/lib/authOptions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { HeroRow } from "@/components/home/CarouselRow";
 import { CarouselRow } from "@/components/home/CarouselRow";
 import { SeriesRow } from "@/components/home/CarouselRow";
+import { ContinueWatchingRow } from "@/components/home/ContinueWatchingRow";
 import type { MovieRow, SeriesRow as SeriesRowType } from "@/types/db";
 
 async function getPublicMovies(featured?: boolean): Promise<MovieRow[]> {
@@ -11,7 +15,7 @@ async function getPublicMovies(featured?: boolean): Promise<MovieRow[]> {
       .select("*")
       .eq("is_public", true)
       .order("featured", { ascending: false })
-      .order("created_at", { ascending: false })
+      .order("views_count", { ascending: false })
       .limit(40);
     if (featured) query = query.eq("featured", true);
     const { data, error } = await query;
@@ -38,61 +42,52 @@ async function getPublicSeries(): Promise<SeriesRowType[]> {
 }
 
 export default async function HomePage() {
+  const session = await getServerSession(authOptions);
+  const isAuthed = !!session?.user && session.user.status === "approved";
+
   const [featured, recent, seriesList] = await Promise.all([
     getPublicMovies(true),
     getPublicMovies(false),
     getPublicSeries(),
   ]);
-  const hasMovies = recent.length > 0;
-  const hasSeries = seriesList.length > 0;
+
+  const isCompletelyEmpty = recent.length === 0 && seriesList.length === 0;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-8">
-      {!hasMovies && !hasSeries ? (
-        <section className="flex min-h-[60vh] flex-col justify-center gap-4 text-center">
-          <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">
-            Welcome to <span className="text-[color:var(--color-brand)]">MovieZone</span>
+      {isCompletelyEmpty ? (
+        <section className="flex min-h-[70vh] flex-col justify-center gap-6 text-center">
+          <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl">
+            Movies &amp; series.<br />
+            <span className="text-[color:var(--color-brand)]">Stream together.</span>
           </h1>
           <p className="mx-auto max-w-prose text-[color:var(--color-text-secondary)]">
-            Your private movie hub is ready. Once the first movie is ingested
-            from Google Drive, the homepage will come alive with hero carousels,
-            continue-watch, and trending rows — every one of them tuned for the
-            phone you&apos;re holding right now.
+            {isAuthed
+              ? "Your catalogue is empty. Head to the admin panel to ingest your first title."
+              : "Sign in to browse the full catalogue and watch with friends in sync."}
           </p>
-          <div className="mt-6 rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-2)]/60 p-6 text-left text-sm">
-            <p className="font-semibold text-white">Setup checklist</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-[color:var(--color-text-secondary)]">
-              <li>
-                Copy <code className="text-[color:var(--color-brand)]">.env.local.example</code> to{" "}
-                <code className="text-[color:var(--color-brand)]">.env.local</code> and fill in
-                your Supabase + Drive credentials.
-              </li>
-              <li>
-                Run the database migration that creates{" "}
-                <code className="text-[color:var(--color-brand)]">users</code>,{" "}
-                <code className="text-[color:var(--color-brand)]">movies</code>, and{" "}
-                <code className="text-[color:var(--color-brand)]">watch_history</code>.
-              </li>
-              <li>
-                Pull up <code className="text-[color:var(--color-brand)]">/api/smoke</code> to
-                verify backend reachability.
-              </li>
-              <li>
-                Log in as your configured superadmin and head to{" "}
-                <code className="text-[color:var(--color-brand)]">/admin/movies</code> to ingest
-                the first title.
-              </li>
-            </ul>
-          </div>
+          {isAuthed ? (
+            <Link
+              href="/admin/movies"
+              className="mx-auto rounded-full bg-[color:var(--color-brand)] px-6 py-3 text-sm font-semibold text-white"
+            >
+              Go to admin
+            </Link>
+          ) : (
+            <Link
+              href="/login"
+              className="mx-auto rounded-full bg-[color:var(--color-brand)] px-6 py-3 text-sm font-semibold text-white"
+            >
+              Sign in to start watching
+            </Link>
+          )}
         </section>
       ) : (
         <section className="space-y-8">
-          {featured.length > 0 && (
-            <HeroRow title="Featured" movies={featured} />
-          )}
-          {hasSeries && (
-            <SeriesRow title="Series" series={seriesList} />
-          )}
+          {featured.length > 0 && <HeroRow title="Featured" movies={featured} />}
+          {seriesList.length > 0 && <SeriesRow title="Series" series={seriesList} />}
+          {isAuthed && <ContinueWatchingRow />}
+          {featured.length > 0 && <CarouselRow title="Trending now" movies={featured} />}
           <CarouselRow title="Recently added" movies={recent} />
         </section>
       )}
