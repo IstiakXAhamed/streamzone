@@ -21,24 +21,24 @@ export async function POST(req: Request) {
     );
   }
   const raw = await req.text();
-  let body: { name?: string; mimeType?: string; parentFolderId?: string } | null = null;
+  let parsed: { name?: string; mimeType?: string; parentFolderId?: string };
   try {
-    body = JSON.parse(raw) as typeof body;
+    parsed = JSON.parse(raw) as { name?: string; mimeType?: string; parentFolderId?: string };
   } catch {
     return NextResponse.json(
       { error: "Invalid JSON body", received: raw.slice(0, 200) },
       { status: 400 },
     );
   }
-  if (!body?.name) {
+  if (!parsed?.name) {
     return NextResponse.json({ error: "name is required", received: raw.slice(0, 200) }, { status: 400 });
   }
 
   try {
     const result = await createResumableUploadSession({
-      name: body.name,
-      mimeType: body.mimeType,
-      parentFolderId: body.parentFolderId ?? process.env.NEXT_PUBLIC_MOVIEZONE_DRIVE_FOLDER_ID,
+      name: parsed.name,
+      mimeType: parsed.mimeType,
+      parentFolderId: parsed.parentFolderId ?? process.env.NEXT_PUBLIC_MOVIEZONE_DRIVE_FOLDER_ID,
     });
     return NextResponse.json(result);
   } catch (e) {
