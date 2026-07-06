@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Plus } from "lucide-react";
+import { DriveFilePicker } from "./DriveFilePicker";
 
 interface FormValues {
   title: string;
@@ -31,7 +32,7 @@ export function IngestMovieButton() {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormValues>({
     defaultValues: defaults,
   });
 
@@ -96,10 +97,10 @@ export function IngestMovieButton() {
             onSubmit={handleSubmit(submit)}
             className="max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-1)] p-5"
           >
-            <h2 className="text-lg font-bold">Add movie from Google Drive</h2>
+            <h2 className="text-lg font-bold">Add movie</h2>
             <p className="text-xs text-[color:var(--color-text-tertiary)]">
-              Paste the Drive file IDs for the MP4, poster, backdrop, trailer. We
-              never store the bytes — only metadata.
+              Upload the MP4 directly from your PC. Bytes go straight to your
+              Drive — our server never touches them.
             </p>
 
             <Field label="Title *" error={errors.title?.message}>
@@ -108,8 +109,9 @@ export function IngestMovieButton() {
             <Field label="Slug (optional)" error={errors.slug?.message}>
               <Input {...register("slug")} placeholder="inception" />
             </Field>
-            <Field label="Drive file ID (MP4) *" error={errors.driveFileId?.message}>
-              <Input {...register("driveFileId")} placeholder="1AbC...xyz" />
+            <Field label="MP4 file *">
+              <DriveFilePicker label="Choose MP4" onPicked={(id) => setValue("driveFileId", id)} />
+              <input type="hidden" {...register("driveFileId")} />
             </Field>
 
             <div className="grid grid-cols-2 gap-3">

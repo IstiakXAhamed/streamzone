@@ -1,7 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { HeroRow } from "@/components/home/CarouselRow";
 import { CarouselRow } from "@/components/home/CarouselRow";
-import type { MovieRow } from "@/types/db";
+import { SeriesRow } from "@/components/home/CarouselRow";
+import type { MovieRow, SeriesRow as SeriesRowType } from "@/types/db";
 
 async function getPublicMovies(featured?: boolean): Promise<MovieRow[]> {
   try {
@@ -21,16 +22,33 @@ async function getPublicMovies(featured?: boolean): Promise<MovieRow[]> {
   }
 }
 
+async function getPublicSeries(): Promise<SeriesRowType[]> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("series")
+      .select("id,title,slug,year,poster_url,backdrop_url,rating,seasons_count,episodes_count")
+      .eq("is_public", true)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (error) return [];
+    return (data ?? []) as unknown as SeriesRowType[];
+  } catch {
+    return [];
+  }
+}
+
 export default async function HomePage() {
-  const [featured, recent] = await Promise.all([
+  const [featured, recent, seriesList] = await Promise.all([
     getPublicMovies(true),
     getPublicMovies(false),
+    getPublicSeries(),
   ]);
   const hasMovies = recent.length > 0;
+  const hasSeries = seriesList.length > 0;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-8">
-      {!hasMovies ? (
+      {!hasMovies && !hasSeries ? (
         <section className="flex min-h-[60vh] flex-col justify-center gap-4 text-center">
           <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">
             Welcome to <span className="text-[color:var(--color-brand)]">MovieZone</span>
@@ -71,6 +89,9 @@ export default async function HomePage() {
         <section className="space-y-8">
           {featured.length > 0 && (
             <HeroRow title="Featured" movies={featured} />
+          )}
+          {hasSeries && (
+            <SeriesRow title="Series" series={seriesList} />
           )}
           <CarouselRow title="Recently added" movies={recent} />
         </section>

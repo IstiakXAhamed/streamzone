@@ -39,6 +39,39 @@ export interface MovieRow {
   created_at: string;
 }
 
+export interface SeriesRow {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  year: number | null;
+  genre: string[];
+  poster_url: string | null;
+  backdrop_url: string | null;
+  rating: number | null;
+  seasons_count: number;
+  episodes_count: number;
+  status: "ongoing" | "completed" | "hiatus";
+  is_public: boolean;
+  featured: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface EpisodeRow {
+  id: string;
+  series_id: string;
+  season_number: number;
+  episode_number: number;
+  title: string;
+  description: string | null;
+  duration_seconds: number | null;
+  drive_file_id: string;
+  still_url: string | null;
+  air_date: string | null;
+  created_at: string;
+}
+
 export interface CategoryRow {
   id: string;
   name: string;

@@ -77,3 +77,63 @@ export async function getDriveFileStreamUrl(
   if (!apiKey) throw new Error("NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY is missing");
   return `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${apiKey}`;
 }
+
+/**
+ * Create a Drive resumable-upload session. Returns the upload URL the browser
+ * should PUT bytes to, plus the eventual Drive fileId. Server bandwidth is tiny
+ * (~500 bytes); the actual file bytes travel browser -> Google directly.
+ */
+export async function createResumableUploadSession(input: {
+  name: string;
+  mimeType?: string;
+  parentFolderId?: string;
+}): Promise<{ uploadUrl: string; fileId: string }> {
+  const token = await getAccessToken();
+  const metadata: Record<string, unknown> = { name: input.name };
+  if (input.parentFolderId) metadata.parents = [input.parentFolderId];
+
+  const res = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id",
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json; charset=UTF-8",
+        "x-upload-content-type": input.mimeType ?? "application/octet-stream",
+      },
+      body: JSON.stringify(metadata),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Drive resumable session failed: ${res.status} ${await res.text()}`);
+  }
+  const uploadUrl = res.headers.get("location");
+  const { id: fileId } = (await res.json()) as { id: string };
+  if (!uploadUrl || !fileId) throw new Error("Drive resumable session returned no location/fileId");
+  return { uploadUrl, fileId };
+}
+
+/**
+ * Confirm a Drive upload finished and return the file's metadata (id, name,
+ * size, thumbnailLink) so the client can store the fileId in Supabase.
+ */
+export async function finalizeUpload(
+  fileId: string,
+): Promise<{ id: string; name: string; size: number | null; mimeType: string; thumbnailLink: string | null }> {
+  const token = await getAccessToken();
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,size,mimeType,thumbnailLink`,
+    { headers: { authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) throw new Error(`Drive finalize failed: ${res.status} ${await res.text()}`);
+  const data = (await res.json()) as {
+    id: string; name: string; size?: string; mimeType: string; thumbnailLink?: string;
+  };
+  return {
+    id: data.id,
+    name: data.name,
+    size: data.size ? Number(data.size) : null,
+    mimeType: data.mimeType,
+    thumbnailLink: data.thumbnailLink ?? null,
+  };
+}

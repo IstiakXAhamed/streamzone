@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Film, Users, BarChart3, Radio, Settings, Shield, type LucideIcon,
+  LayoutDashboard, Film, Tv, Users, BarChart3, Radio, Settings, Shield, type LucideIcon,
 } from "lucide-react";
 
 interface NavItem { href: string; label: string; Icon: LucideIcon; badge?: number; superOnly?: boolean; }
@@ -14,6 +14,7 @@ export function AdminSidebar({ pendingCount, role }: { pendingCount: number; rol
   const items: NavItem[] = [
     { href: "/admin", label: "Dashboard", Icon: LayoutDashboard },
     { href: "/admin/movies", label: "Movies", Icon: Film },
+    { href: "/admin/series", label: "Series", Icon: Tv },
     { href: "/admin/users", label: "Users", Icon: Users, badge: pendingCount },
     { href: "/admin/analytics", label: "Analytics", Icon: BarChart3 },
     { href: "/admin/rooms", label: "Rooms", Icon: Radio },

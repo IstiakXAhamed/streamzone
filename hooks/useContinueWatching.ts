@@ -3,11 +3,16 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { MovieCardData } from "@/components/home/MovieCard";
 
-interface WatchHistoryRow {
-  movie_id: string;
+export interface WatchHistoryRow {
+  movie_id: string | null;
+  episode_id: string | null;
   position_seconds: number;
   watched_at: string;
   movie: MovieCardData | null;
+  episode: {
+    id: string; title: string; season_number: number; episode_number: number;
+    series: { id: string; slug: string } | null;
+  } | null;
 }
 
 export function useContinueWatching() {
@@ -22,16 +27,13 @@ export function useContinueWatching() {
   });
 }
 
-export function useReportProgress(movieId: string, positionSeconds: number) {
+export function useReportProgress(input: { movieId?: string; episodeId?: string }) {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      await fetch("/api/me/history", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ movieId, positionSeconds }),
-      });
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["continue-watching"] }),
-  });
+  return (positionSeconds: number) => {
+    fetch("/api/me/history", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...input, positionSeconds }),
+    }).then(() => qc.invalidateQueries({ queryKey: ["continue-watching"] })).catch(() => undefined);
+  };
 }

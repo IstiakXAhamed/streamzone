@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
   const { data: rows } = await supabase
     .from("watch_history")
-    .select("movie_id, position_seconds, watched_at, movie:movies(id,title,slug,poster_url)")
+    .select("movie_id, episode_id, position_seconds, watched_at, movie:movies(id,title,slug,poster_url), episode:episodes(id,title,season_number,episode_number,series:series(id,slug))")
     .eq("user_id", data.user.id)
     .order("watched_at", { ascending: false })
     .limit(limit);
@@ -21,27 +21,32 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ history: rows ?? [] });
 }
 
-/** POST /api/me/history — { movieId, positionSeconds } upserts a watch-history row. */
+/** POST /api/me/history — { movieId | episodeId, positionSeconds } upserts a watch-history row. */
 export async function POST(req: Request) {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { movieId, positionSeconds } = (await req.json()) as {
-    movieId?: string; positionSeconds?: number;
+  const { movieId, episodeId, positionSeconds } = (await req.json()) as {
+    movieId?: string; episodeId?: string; positionSeconds?: number;
   };
-  if (!movieId || typeof positionSeconds !== "number") {
-    return NextResponse.json({ error: "movieId and positionSeconds required" }, { status: 400 });
+  if ((!movieId && !episodeId) || typeof positionSeconds !== "number") {
+    return NextResponse.json(
+      { error: "movieId or episodeId and positionSeconds required" },
+      { status: 400 },
+    );
   }
 
+  const conflictKey = movieId ? "user_id,movie_id" : "user_id,episode_id";
   await supabase.from("watch_history").upsert(
     {
       user_id: data.user.id,
-      movie_id: movieId,
+      movie_id: movieId ?? null,
+      episode_id: episodeId ?? null,
       position_seconds: Math.max(0, Math.floor(positionSeconds)),
       watched_at: new Date().toISOString(),
     },
-    { onConflict: "user_id,movie_id" },
+    { onConflict: conflictKey },
   );
   return NextResponse.json({ ok: true });
 }

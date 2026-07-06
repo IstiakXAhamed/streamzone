@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { LogOut } from "lucide-react";
-import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 

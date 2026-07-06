@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MovieCard, MovieCardData } from "./MovieCard";
+import { SeriesCard, type SeriesCardData } from "./SeriesCard";
 
 export function CarouselRow({
   title,
@@ -15,6 +16,27 @@ export function CarouselRow({
         {movies.map((m) => (
           <div key={m.id} className="mz-snap-start">
             <MovieCard movie={m} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function SeriesRow({
+  title,
+  series,
+}: {
+  title: string;
+  series: SeriesCardData[];
+}) {
+  return (
+    <section>
+      <h2 className="mb-3 text-lg font-semibold">{title}</h2>
+      <div className="mz-snap-x -mx-4 flex gap-3 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        {series.map((s) => (
+          <div key={s.id} className="mz-snap-start">
+            <SeriesCard movie={s} />
           </div>
         ))}
       </div>
