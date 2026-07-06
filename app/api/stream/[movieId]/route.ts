@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { createClient } from "@/lib/supabase/server";
+import { authOptions } from "@/lib/authOptions";
 import { getDriveFileStreamUrl } from "@/lib/googleDrive";
 import type { NextRequest } from "next/server";
 
 /**
  * GET /api/stream/:movieId
  *
- * Returns a direct Google Drive stream URL for the requesting user.
+ * Returns a direct Google Drive stream URL for an approved user (NextAuth session).
  *
  * We never proxy bytes. We simply:
- *   1. confirm the user's Supabase session + status === 'approved'
+ *   1. confirm the NextAuth session + status === 'approved'
  *   2. look up the movie row
  *   3. build + return a Drive direct URL (service-account signed OR api-key)
  *
@@ -21,18 +23,20 @@ export async function GET(
 ) {
   const { movieId } = await params;
 
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
+  const supabase = await createClient();
   const { data: urow } = await supabase
     .from("users")
-    .select("status")
-    .eq("id", data.user.id)
-    .single();
-  if (!urow || urow?.status !== "approved") {
+    .select("id,status")
+    .eq("email", session.user.email.toLowerCase())
+    .maybeSingle();
+  if (!urow) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (urow.status !== "approved") {
     return NextResponse.json({ error: "Account not approved" }, { status: 403 });
   }
 
@@ -49,7 +53,7 @@ export async function GET(
   // record a watch-history hit (best-effort)
   try {
     await supabase.from("watch_history").insert({
-      user_id: data.user.id,
+      user_id: urow.id,
       movie_id: movie.id,
       position_seconds: 0,
     });

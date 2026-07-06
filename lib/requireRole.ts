@@ -1,34 +1,33 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { createClient } from "@/lib/supabase/server";
+import { authOptions } from "@/lib/authOptions";
 import type { SessionUser } from "@/lib/auth";
 import type { Role } from "@/types/db";
 
 /**
- * Convenience used by Route Handlers / Server Components. Reads the current
- * user from Supabase and returns it — or a NextResponse error the caller can
- * `return` directly from the handler.
- *
- * Usage in a route handler:
- *   const { user, error } = await requireUser();
- *   if (error) return error;
+ * Auth guard for Route Handlers. Uses the NextAuth session (Google OAuth or
+ * credentials) as the source of truth, then looks up the user's role/status in
+ * Supabase. Returns the user, or a NextResponse error the caller can `return`
+ * directly from the handler.
  */
 export async function requireUser(): Promise<
   { user: SessionUser; error: null } | { user: null; error: NextResponse }
 > {
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
     return {
       user: null,
       error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     };
   }
 
+  const supabase = await createClient();
   const { data: row } = await supabase
     .from("users")
     .select("id,email,name,avatar_url,role,status")
-    .eq("id", data.user.id)
-    .single();
+    .eq("email", session.user.email.toLowerCase())
+    .maybeSingle();
 
   if (!row) {
     return {
@@ -36,7 +35,6 @@ export async function requireUser(): Promise<
       error: NextResponse.json({ error: "User record not found" }, { status: 403 }),
     };
   }
-
   if (row.status === "pending") {
     return {
       user: null,

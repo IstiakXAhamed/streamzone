@@ -114,20 +114,23 @@ export function IngestMovieButton() {
               <input type="hidden" {...register("driveFileId")} />
             </Field>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Poster file ID">
-                <Input {...register("posterDriveFileId")} placeholder="1AbC…" />
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Poster image">
+                <DriveFilePicker label="Upload poster" accept="image/*" onPicked={(id) => setValue("posterDriveFileId", id)} />
+                <input type="hidden" {...register("posterDriveFileId")} />
               </Field>
-              <Field label="Backdrop file ID">
-                <Input {...register("backdropDriveFileId")} placeholder="1AbC…" />
+              <Field label="Backdrop image">
+                <DriveFilePicker label="Upload backdrop" accept="image/*" onPicked={(id) => setValue("backdropDriveFileId", id)} />
+                <input type="hidden" {...register("backdropDriveFileId")} />
               </Field>
-              <Field label="Trailer file ID">
-                <Input {...register("trailerDriveFileId")} placeholder="1AbC…" />
-              </Field>
-              <Field label="Year">
-                <Input type="number" {...register("year")} placeholder="2010" />
+              <Field label="Trailer video">
+                <DriveFilePicker label="Upload trailer" accept="video/*" onPicked={(id) => setValue("trailerDriveFileId", id)} />
+                <input type="hidden" {...register("trailerDriveFileId")} />
               </Field>
             </div>
+            <Field label="Year">
+              <Input type="number" {...register("year")} placeholder="2010" />
+            </Field>
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Duration (s)">
