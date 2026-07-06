@@ -35,9 +35,10 @@ export const movieIngestSchema = z.object({
   title: z.string().min(1).max(200),
   slug: z
     .string()
-    .min(1)
     .max(220)
-    .regex(/^[a-z0-9-]+$/, "slug must be lowercase kebab-case"),
+    .regex(/^[a-z0-9-]*$/, "slug must be lowercase kebab-case")
+    .optional()
+    .default(""),
   description: z.string().max(5000).optional().nullable(),
   year: z.number().int().min(1888).max(2099).optional().nullable(),
   durationSeconds: z.number().int().positive().optional().nullable(),

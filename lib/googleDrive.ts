@@ -10,8 +10,10 @@ let cachedSaKey: Record<string, unknown> | null = null;
 
 function getServiceAccount(): Record<string, unknown> {
   if (cachedSaKey) return cachedSaKey;
-  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
+  let b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
   if (!b64) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON_B64 is not set");
+  // strip any whitespace/newlines that may have crept in via copy-paste
+  b64 = b64.replace(/\s+/g, "");
   cachedSaKey = JSON.parse(Buffer.from(b64, "base64").toString("utf8")) as Record<
     string,
     unknown
