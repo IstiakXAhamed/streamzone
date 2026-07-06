@@ -43,7 +43,17 @@ async function getPublicSeries(): Promise<SeriesRowType[]> {
 
 export default async function HomePage() {
   const session = await getServerSession(authOptions);
+  let isAdmin = false;
   const isAuthed = !!session?.user && session.user.status === "approved";
+
+  if (isAuthed && session.user.email) {
+    const { data: row } = await supabaseAdmin
+      .from("users")
+      .select("role")
+      .ilike("email", session.user.email)
+      .maybeSingle();
+    isAdmin = row?.role === "admin" || row?.role === "superadmin";
+  }
 
   const [featured, recent, seriesList] = await Promise.all([
     getPublicMovies(true),
@@ -66,19 +76,19 @@ export default async function HomePage() {
               ? "Your catalogue is empty. Head to the admin panel to ingest your first title."
               : "Sign in to browse the full catalogue and watch with friends in sync."}
           </p>
-          {isAuthed ? (
+          {isAdmin ? (
             <Link
               href="/admin/movies"
               className="mx-auto rounded-full bg-[color:var(--color-brand)] px-6 py-3 text-sm font-semibold text-white"
             >
-              Go to admin
+              Go to admin panel
             </Link>
           ) : (
             <Link
               href="/login"
               className="mx-auto rounded-full bg-[color:var(--color-brand)] px-6 py-3 text-sm font-semibold text-white"
             >
-              Sign in to start watching
+              {isAuthed ? "Browse catalogue" : "Sign in to start watching"}
             </Link>
           )}
         </section>
