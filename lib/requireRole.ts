@@ -26,7 +26,7 @@ export async function requireUser(): Promise<
   const { data: row } = await supabase
     .from("users")
     .select("id,email,name,avatar_url,role,status")
-    .eq("email", session.user.email.toLowerCase())
+    .ilike("email", session.user.email)
     .maybeSingle();
 
   if (!row) {

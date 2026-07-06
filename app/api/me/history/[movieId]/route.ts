@@ -12,7 +12,7 @@ export async function GET(
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const supabase = await createClient();
-  const { data: u } = await supabase.from("users").select("id").eq("email", session.user.email.toLowerCase()).maybeSingle();
+  const { data: u } = await supabase.from("users").select("id").ilike("email", session.user.email).maybeSingle();
   if (!u) return NextResponse.json({ position: 0 });
 
   const { data: row } = await supabase

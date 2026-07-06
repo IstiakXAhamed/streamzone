@@ -31,7 +31,7 @@ export async function GET(
   const { data: urow } = await supabase
     .from("users")
     .select("id,status")
-    .eq("email", session.user.email.toLowerCase())
+    .ilike("email", session.user.email)
     .maybeSingle();
   if (!urow) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

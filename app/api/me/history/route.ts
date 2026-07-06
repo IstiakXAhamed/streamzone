@@ -9,7 +9,7 @@ async function getUserId(email: string) {
   const { data } = await supabase
     .from("users")
     .select("id")
-    .eq("email", email.toLowerCase())
+    .ilike("email", email)
     .maybeSingle();
   return data?.id ?? null;
 }

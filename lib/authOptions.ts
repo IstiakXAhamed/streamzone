@@ -38,7 +38,7 @@ async function resolveUserRole(email: string): Promise<{ role: Role; status: Use
   const { data } = await supabaseAdmin
     .from("users")
     .select("role,status")
-    .eq("email", normalized)
+    .ilike("email", normalized)
     .maybeSingle();
   if (!data) return { role: "user", status: "pending" };
   return { role: data.role as Role, status: data.status as UserStatus };
@@ -79,7 +79,7 @@ export const authOptions: NextAuthOptions = {
         .from("users")
         .upsert(
           {
-            email,
+            email: email.toLowerCase(),
             name: user.name ?? null,
             avatar_url: user.image ?? null,
             role,
@@ -99,7 +99,7 @@ export const authOptions: NextAuthOptions = {
         const { data } = await supabaseAdmin
           .from("users")
           .select("id")
-          .eq("email", emailOf(user.email))
+          .ilike("email", emailOf(user.email))
           .maybeSingle();
         token.uid = data?.id ?? null;
       }
