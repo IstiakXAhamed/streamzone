@@ -1,11 +1,29 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
+import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { Role, UserStatus } from "@/types/db";
 
 const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL;
 const emailOf = (e: string | null | undefined) => (e ?? "").toLowerCase().trim();
+
+/**
+ * Validate email+password against Supabase Auth WITHOUT mutating the password.
+ * We spin up a short-lived anon client (never exposed to the browser) whose
+ * only job is to attempt a server-side signInWithPassword. A successful
+ * attempt proves the credentials are correct.
+ */
+async function verifyCredentials(email: string, password: string): Promise<string | null> {
+  const anonClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } },
+  );
+  const { data, error } = await anonClient.auth.signInWithPassword({ email, password });
+  if (error || !data.user) return null;
+  return data.user.id;
+}
 
 /**
  * Find or create the local `users` row that mirrors the Auth user.
@@ -40,11 +58,13 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      // NOTE: Supabase Auth owns password verification. The credentials flow is
-      // a stub until Supabase auth verifies the user server-side. The Google flow
-      // goes through Supabase signInWithOAuth directly from the client.
-      async authorize() {
-        return null; // credentials login handled by /api/auth/signin route
+      async authorize(credentials) {
+        const email = credentials?.email;
+        const password = credentials?.password;
+        if (!email || !password) return null;
+        const authUserId = await verifyCredentials(email, password);
+        if (!authUserId) return null;
+        return { id: authUserId, email };
       },
     }),
   ],
@@ -55,7 +75,6 @@ export const authOptions: NextAuthOptions = {
 
       const { role, status } = await resolveUserRole(email);
 
-      // upsert the mapping row so admins can see every registered account
       await supabaseAdmin
         .from("users")
         .upsert(
@@ -70,7 +89,6 @@ export const authOptions: NextAuthOptions = {
           { onConflict: "email" },
         );
 
-      // pending / suspended users are blocked from signing in
       return status !== "pending" && status !== "suspended";
     },
     async jwt({ token, user }) {
