@@ -20,18 +20,18 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  const raw = await req.text();
   let body: { name?: string; mimeType?: string; parentFolderId?: string } | null = null;
   try {
-    body = (await req.json()) as typeof body;
+    body = JSON.parse(raw) as typeof body;
   } catch {
-    const raw = await req.text();
     return NextResponse.json(
       { error: "Invalid JSON body", received: raw.slice(0, 200) },
       { status: 400 },
     );
   }
   if (!body?.name) {
-    return NextResponse.json({ error: "name is required" }, { status: 400 });
+    return NextResponse.json({ error: "name is required", received: raw.slice(0, 200) }, { status: 400 });
   }
 
   try {
