@@ -13,9 +13,18 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // If already logged in, bounce to homepage
+  // If already logged in AND has a valid DB record, bounce to homepage.
+  // Don't bounce if the session is stale (user deleted from DB) — let them re-login.
   useEffect(() => {
-    if (status === "authenticated") router.replace("/");
+    if (status !== "authenticated") return;
+    (async () => {
+      try {
+        const res = await fetch("/api/me/history?limit=1");
+        if (res.ok) {
+          router.replace("/");
+        }
+      } catch { /* stale session — stay on login */ }
+    })();
   }, [status, router]);
 
   async function handleSubmit(e: React.FormEvent) {
