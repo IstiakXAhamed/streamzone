@@ -13,9 +13,23 @@ export async function POST(req: Request) {
   if (error) return error;
   void user;
 
-  const body = (await req.json().catch(() => null)) as {
-    name?: string; mimeType?: string; parentFolderId?: string;
-  } | null;
+  const contentType = req.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    return NextResponse.json(
+      { error: "Content-Type must be application/json", received: contentType },
+      { status: 400 },
+    );
+  }
+  let body: { name?: string; mimeType?: string; parentFolderId?: string } | null = null;
+  try {
+    body = (await req.json()) as typeof body;
+  } catch {
+    const raw = await req.text();
+    return NextResponse.json(
+      { error: "Invalid JSON body", received: raw.slice(0, 200) },
+      { status: 400 },
+    );
+  }
   if (!body?.name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
