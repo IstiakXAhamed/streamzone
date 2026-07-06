@@ -1,18 +1,17 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { authOptions } from "@/lib/authOptions";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  const supabase = await createClient();
 
   let dbRow = null;
   let lookupError = null;
 
   if (session?.user?.email) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from("users")
         .select("id,email,role,status")
         .ilike("email", session.user.email)

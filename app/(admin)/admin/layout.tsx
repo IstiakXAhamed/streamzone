@@ -7,14 +7,14 @@ import { AdminSidebar } from "@/components/admin/AdminSidebar";
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
 
-  // Verify role against the database on every admin page load (don't trust JWT alone)
+  // Verify role against the database using the service-role client (bypasses RLS).
   let role: "user" | "admin" | "superadmin" = "user";
   let pendingCount = 0;
 
   if (session?.user?.email) {
     const { data: row } = await supabaseAdmin
       .from("users")
-      .select("role,status")
+      .select("id,role,status")
       .ilike("email", session.user.email)
       .maybeSingle();
 
