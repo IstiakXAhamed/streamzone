@@ -73,17 +73,14 @@ export function useDriveUpload() {
       });
 
       // 3. Confirm + fetch metadata from our server.
-      const finRes = await fetch("/api/drive/upload-finalize", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ fileId }),
-      });
+      const finText = await finRes.text();
+      let finJson: Record<string, unknown> = {};
+      try { finJson = JSON.parse(finText); } catch { /* empty body */ }
       if (!finRes.ok) {
-        const body = (await finRes.json().catch(() => ({}))) as { error?: string };
         setBusy(false);
-        throw new Error(body.error ?? `upload-finalize failed: ${finRes.status}`);
+        throw new Error((finJson.error as string) ?? `upload-finalize failed: ${finRes.status}`);
       }
-      const meta = (await finRes.json()) as DriveUploadResult;
+      const meta = finJson as unknown as DriveUploadResult;
       setBusy(false);
       setProgress(100);
       onProgress?.(100);

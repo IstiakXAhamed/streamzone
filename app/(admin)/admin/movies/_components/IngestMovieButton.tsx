@@ -110,7 +110,7 @@ export function IngestMovieButton() {
               <Input {...register("slug")} placeholder="inception" />
             </Field>
             <Field label="MP4 file *">
-              <DriveFilePicker label="Choose MP4" onPicked={(id) => setValue("driveFileId", id)} />
+              <DriveFilePicker label="Choose MP4" onPicked={(id) => setValue("driveFileId", id, { shouldValidate: true })} />
               <input type="hidden" {...register("driveFileId")} />
             </Field>
 
