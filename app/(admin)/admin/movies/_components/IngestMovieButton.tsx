@@ -32,9 +32,10 @@ export function IngestMovieButton() {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
 
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<FormValues>({
     defaultValues: defaults,
   });
+  const driveFileId = watch("driveFileId");
 
   async function submit(values: FormValues) {
     setBusy(true);
