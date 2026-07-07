@@ -33,12 +33,14 @@ export function useDriveUpload() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: file.name, mimeType: file.type || undefined }),
       });
+      const startText = await startRes.text();
+      let startJson: Record<string, unknown> = {};
+      try { startJson = JSON.parse(startText); } catch { /* empty body */ }
       if (!startRes.ok) {
-        const body = (await startRes.json().catch(() => ({}))) as { error?: string };
         setBusy(false);
-        throw new Error(body.error ?? `upload-start failed: ${startRes.status}`);
+        throw new Error((startJson.error as string) ?? `upload-start failed: ${startRes.status}`);
       }
-      const { uploadUrl } = (await startRes.json()) as { uploadUrl: string };
+      const uploadUrl = startJson.uploadUrl as string;
 
       // 2. PUT the bytes directly to Google Drive. Track progress locally.
       const fileId = await new Promise<string>((resolve, reject) => {
