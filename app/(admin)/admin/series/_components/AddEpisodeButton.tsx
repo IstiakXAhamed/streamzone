@@ -46,7 +46,7 @@ export function AddEpisodeButton({ seriesId, onAdded }: { seriesId: string; onAd
     try {
       // upload all files in parallel (bytes go browser -> Drive directly)
       const uploaded = await Promise.all(
-        files.map((f) => startUpload(f).then((meta) => ({ name: f.name, driveFileId: meta.fileId }))),
+        files.map((f) => startUpload(f).then((meta) => ({ name: f.name, driveFileId: meta.id }))),
       );
       // save episodes sequentially from the starting (season, episode)
       const s = season;
