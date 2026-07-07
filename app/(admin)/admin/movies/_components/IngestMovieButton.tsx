@@ -93,7 +93,7 @@ export function IngestMovieButton() {
             className="max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-1)] p-5">
             <h2 className="text-lg font-bold">Add movie</h2>
             <p className="text-xs text-[color:var(--color-text-tertiary)]">
-              Upload the MP4 directly from your PC to Drive, then save.
+              Upload any video format (MP4, MKV, MOV, HEVC, AVI…) from your PC to Drive.
             </p>
 
             <Field label="Title *" error={errors.title?.message}>
@@ -102,8 +102,8 @@ export function IngestMovieButton() {
             <Field label="Slug (optional)">
               <Input {...register("slug")} placeholder="inception" />
             </Field>
-            <Field label="MP4 file *">
-              <DriveFilePicker label="Choose MP4" accept="video/*" onPicked={(id) => setValue("driveFileId", id, { shouldValidate: true })} />
+            <Field label="Video file *">
+              <DriveFilePicker label="Choose video file" onPicked={(id) => setValue("driveFileId", id, { shouldValidate: true })} />
               <input type="hidden" {...bind("driveFileId")} />
               <Err error={errors.driveFileId?.message} />
             </Field>

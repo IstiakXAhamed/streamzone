@@ -11,8 +11,10 @@ interface Props {
 }
 
 /** Button that lets the admin pick a file from their PC, uploads it directly
- *  to Drive via the resumable-upload pipeline, and reports the resulting fileId. */
-export function DriveFilePicker({ label, accept = "video/*,image/*", onPicked }: Props) {
+ *  to Drive via the resumable-upload pipeline, and reports the resulting fileId.
+ *  Default accepts ANY file — Drive stores all formats; playback transcoding
+ *  is handled separately for formats browsers can't play natively. */
+export function DriveFilePicker({ label, accept = "*/*", onPicked }: Props) {
   const [name, setName] = useState<string | null>(null);
   const { startUpload, progress, busy, error } = useDriveUpload();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -38,7 +40,13 @@ export function DriveFilePicker({ label, accept = "video/*,image/*", onPicked }:
         <span className="truncate">{busy ? `${progress}%` : name ?? label}</span>
         <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleFile} disabled={busy} />
       </label>
-      {error && <span className="text-xs text-[color:var(--color-brand)]">{error}</span>}
+      {error && (
+        <span className="text-xs text-[color:var(--color-brand)]">
+          {error.includes("CORS") || error.includes("Drive PUT")
+            ? "Upload blocked — please share your Drive folder with moviezone-drive@moviezone-501600.iam.gserviceaccount.com as Editor, then try again."
+            : error}
+        </span>
+      )}
     </div>
   );
 }
