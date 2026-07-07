@@ -30,6 +30,7 @@ export function useDriveUpload() {
       // 1. Ask our server to create a resumable session (tiny server bytes).
       const startRes = await fetch("/api/drive/upload-start", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: file.name, mimeType: file.type || undefined }),
       });
