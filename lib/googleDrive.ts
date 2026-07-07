@@ -113,10 +113,24 @@ export async function createResumableUploadSession(input: {
     },
   );
   if (!res.ok) {
-    throw new Error(`Drive resumable session failed: ${res.status} ${await res.text()}`);
+    const errText = await res.text();
+    throw new Error(`Drive resumable session failed: ${res.status} ${errText.slice(0, 200)}`);
   }
   const uploadUrl = res.headers.get("location");
-  const { id: fileId } = (await res.json()) as { id: string };
+  // Google's resumable-upload endpoint returns the fileId in the Location header,
+  // not the JSON body. Parse it from the URL to avoid an empty-body JSON error.
+  let fileId = "";
+  if (uploadUrl) {
+    const m = uploadUrl.match(/[?&]upload_id=([^&]+)/);
+    if (m) fileId = m[1];
+  }
+  // fall back to parsing the response body in case the format changes
+  if (!fileId) {
+    try {
+      const body = (await res.json()) as { id?: string };
+      fileId = body.id ?? "";
+    } catch { /* empty body — already handled above */ }
+  }
   if (!uploadUrl || !fileId) throw new Error("Drive resumable session returned no location/fileId");
   return { uploadUrl, fileId };
 }
