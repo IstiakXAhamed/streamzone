@@ -54,9 +54,15 @@ async function getAccessToken(): Promise<string> {
       assertion: jwt,
     }),
   });
-  const data = (await tokenRes.json()) as { access_token?: string };
+  const tokenText = await tokenRes.text();
+  let data: { access_token?: string; error?: string };
+  try {
+    data = JSON.parse(tokenText) as typeof data;
+  } catch {
+    throw new Error(`Drive token endpoint returned non-HTTP ${tokenRes.status}: ${tokenText.slice(0, 200)}`);
+  }
   if (!data.access_token) {
-    throw new Error(`Drive token failed: ${JSON.stringify(data)}`);
+    throw new Error(`Drive token failed: ${data.error ?? "unknown"} — ${tokenText.slice(0, 200)}`);
   }
   return data.access_token;
 }
