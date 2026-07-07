@@ -44,6 +44,8 @@ export function useDriveUpload() {
       const uploadUrl = startJson.uploadUrl as string;
 
       // 2. PUT the bytes directly to Google Drive. Track progress locally.
+      // The fileId is already known from step 1 (parsed from the Location header),
+      // so we only need to verify the PUT succeeded.
       const fileId = await new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         abortRef.current = xhr;
@@ -56,13 +58,16 @@ export function useDriveUpload() {
           onProgress?.(pct);
         };
         xhr.onload = () => {
+          // Google's upload URL already encodes the fileId; just confirm success.
+          // The response body may be empty or contain file metadata — either is fine.
           if (xhr.status >= 200 && xhr.status < 300) {
+            // extract the canonical fileId from the PUT response if present, else fall back
+            let finalId = startJson.fileId as string;
             try {
-              const meta = JSON.parse(xhr.responseText) as { id: string };
-              resolve(meta.id);
-            } catch {
-              reject(new Error("Drive upload returned invalid metadata"));
-            }
+              const meta = JSON.parse(xhr.responseText) as { id?: string };
+              if (meta.id) finalId = meta.id;
+            } catch { /* empty body — use the fallback id */ }
+            resolve(finalId);
           } else {
             reject(new Error(`Drive PUT failed: ${xhr.status}`));
           }
