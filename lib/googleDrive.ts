@@ -22,7 +22,7 @@ function getServiceAccount(): Record<string, unknown> {
 }
 
 /** A Google service-account access token scoped to full Drive access (upload + read). */
-async function getAccessToken(): Promise<string> {
+export async function getAccessToken(): Promise<string> {
   const sa = getServiceAccount();
   const saEmail = sa.client_email as string;
   const saPrivateKey = sa.private_key as string;

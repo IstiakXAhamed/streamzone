@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 
 export interface DriveUploadResult {
-  fileId: string;
+  id: string;
   name: string;
   size: number | null;
   mimeType: string;
@@ -11,8 +11,8 @@ export interface DriveUploadResult {
 }
 
 /**
- * Pick a file from PC and upload it directly to Google Drive (bytes go
- * browser -> Google, zero server bandwidth). Returns startUpload(file, onProgress).
+ * Pick a file from PC and upload it through our server to Google Drive
+ * (server-side upload avoids browser CORS issues with resumable URLs).
  */
 export function useDriveUpload() {
   const [progress, setProgress] = useState(0);
@@ -27,30 +27,16 @@ export function useDriveUpload() {
       setProgress(0);
       onProgress?.(0);
 
-      // 1. Ask our server to create a resumable session (tiny server bytes).
-      const startRes = await fetch("/api/drive/upload-start", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: file.name, mimeType: file.type || undefined }),
-      });
-      const startText = await startRes.text();
-      let startJson: Record<string, unknown> = {};
-      try { startJson = JSON.parse(startText); } catch { /* empty body */ }
-      if (!startRes.ok) {
-        setBusy(false);
-        throw new Error((startJson.error as string) ?? `upload-start failed: ${startRes.status}`);
-      }
-      const uploadUrl = startJson.uploadUrl as string;
-
-      // 2. PUT the bytes directly to Google Drive. Track progress locally.
-      // The fileId is already known from step 1 (parsed from the Location header),
-      // so we only need to verify the PUT succeeded.
-      const fileId = await new Promise<string>((resolve, reject) => {
+      const result = await new Promise<DriveUploadResult>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         abortRef.current = xhr;
-        xhr.open("PUT", uploadUrl, true);
-        xhr.setRequestHeader("content-type", file.type || "application/octet-stream");
+
+        const form = new FormData();
+        form.append("file", file);
+
+        xhr.open("POST", "/api/drive/upload", true);
+        xhr.withCredentials = true;
+
         xhr.upload.onprogress = (e) => {
           if (!e.lengthComputable) return;
           const pct = Math.round((e.loaded / e.total) * 100);
@@ -58,44 +44,30 @@ export function useDriveUpload() {
           onProgress?.(pct);
         };
         xhr.onload = () => {
-          // Google's upload URL already encodes the fileId; just confirm success.
-          // The response body may be empty or contain file metadata — either is fine.
           if (xhr.status >= 200 && xhr.status < 300) {
-            // extract the canonical fileId from the PUT response if present, else fall back
-            let finalId = startJson.fileId as string;
             try {
-              const meta = JSON.parse(xhr.responseText) as { id?: string };
-              if (meta.id) finalId = meta.id;
-            } catch { /* empty body — use the fallback id */ }
-            resolve(finalId);
+              resolve(JSON.parse(xhr.responseText) as DriveUploadResult);
+            } catch {
+              reject(new Error("Server returned invalid JSON"));
+            }
           } else {
-            reject(new Error(`Drive PUT failed: ${xhr.status}`));
+            let msg = `Upload failed: ${xhr.status}`;
+            try {
+              const body = JSON.parse(xhr.responseText) as { error?: string };
+              msg = body.error ?? msg;
+            } catch { /* ignore */ }
+            reject(new Error(msg));
           }
         };
-        xhr.onerror = () => reject(new Error("Drive PUT network error"));
+        xhr.onerror = () => reject(new Error("Upload network error"));
         xhr.onabort = () => reject(new Error("Upload cancelled"));
-        xhr.send(file);
+        xhr.send(form);
       });
 
-      // 3. Confirm + fetch metadata from our server.
-      const finRes = await fetch("/api/drive/upload-finalize", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ fileId }),
-      });
-      const finText = await finRes.text();
-      let finJson: Record<string, unknown> = {};
-      try { finJson = JSON.parse(finText); } catch { /* empty body */ }
-      if (!finRes.ok) {
-        setBusy(false);
-        throw new Error((finJson.error as string) ?? `upload-finalize failed: ${finRes.status}`);
-      }
-      const meta = finJson as unknown as DriveUploadResult;
       setBusy(false);
       setProgress(100);
       onProgress?.(100);
-      return meta;
+      return result;
     },
     [],
   );
