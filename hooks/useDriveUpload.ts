@@ -73,6 +73,12 @@ export function useDriveUpload() {
       });
 
       // 3. Confirm + fetch metadata from our server.
+      const finRes = await fetch("/api/drive/upload-finalize", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fileId }),
+      });
       const finText = await finRes.text();
       let finJson: Record<string, unknown> = {};
       try { finJson = JSON.parse(finText); } catch { /* empty body */ }
