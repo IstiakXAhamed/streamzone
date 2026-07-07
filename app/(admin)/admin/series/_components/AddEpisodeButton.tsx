@@ -29,7 +29,7 @@ export function AddEpisodeButton({ seriesId, onAdded }: { seriesId: string; onAd
     setBusy(true); setErr(null); setOk(false);
     try {
       const meta = await startUpload(file);
-      await saveEpisode(seriesId, season, episode, title || file.name.replace(/\.[^.]+$/, ""), meta.fileId);
+      await saveEpisode(seriesId, season, episode, title || file.name.replace(/\.[^.]+$/, ""), meta.id);
       setOk(true);
       onAdded();
       setTimeout(() => { reset(); setOpen(false); }, 600);

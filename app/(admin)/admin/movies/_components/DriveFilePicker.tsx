@@ -23,7 +23,7 @@ export function DriveFilePicker({ label, accept = "video/*,image/*", onPicked }:
     try {
       const meta = await startUpload(file);
       setName(meta.name);
-      onPicked(meta.fileId, meta.name);
+      onPicked(meta.id, meta.name);
     } catch {
       setName(null);
     } finally {
