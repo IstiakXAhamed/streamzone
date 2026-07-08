@@ -2,36 +2,20 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 import { requireRole } from "@/lib/requireRole";
-import { randomUUID } from "crypto";
-
-/**
- * In-memory store for active upload sessions. Maps sessionId → upload metadata.
- * In production with multiple instances, use Redis. For single-instance Vercel
- * serverless, this works because the session is short-lived and the same
- * function instance handles sequential chunk requests.
- *
- * NOTE: Vercel serverless functions may use different instances per request.
- * We store the uploadUrl in the client and pass it in the request body instead.
- */
-
-export interface UploadSession {
-  uploadUrl: string;
-  token: string;
-  createdAt: number;
-}
-
-// We'll pass uploadUrl + token via encrypted session cookie or request body
-// For simplicity and reliability on Vercel, return them to the client encrypted.
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * POST /api/drive/upload-start
  *
  * Admin-only. Creates a Google Drive resumable upload session using the admin's
- * own Google OAuth token. Returns a sessionId with the upload URL.
+ * own Google OAuth token (files count against THEIR Drive quota). Stores the
+ * session URL + token in Supabase and returns a short sessionId. The chunk
+ * endpoint uses that id — keeps requests small so Vercel's firewall doesn't
+ * block them, and works across serverless instances.
  */
 export async function POST(req: Request) {
   try {
-    const { error } = await requireRole("admin", "superadmin");
+    const { user, error } = await requireRole("admin", "superadmin");
     if (error) return error;
 
     const session = await getServerSession(authOptions);
@@ -71,7 +55,7 @@ export async function POST(req: Request) {
 
     const mimeType = parsed.mimeType ?? "application/octet-stream";
 
-    // Create resumable upload session
+    // Create resumable upload session with the user's OAuth token
     const res = await fetch(
       "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id",
       {
@@ -106,9 +90,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Drive returned no upload URL" }, { status: 502 });
     }
 
-    // Return uploadUrl and token to the client. The client will send them
-    // in the request body of each chunk (not in query params, to avoid URL length issues).
-    return NextResponse.json({ uploadUrl, token: googleAccessToken });
+    // Persist the session server-side; return only the short id to the client.
+    const { data: sessionRow, error: insertErr } = await supabaseAdmin
+      .from("upload_sessions")
+      .insert({
+        user_id: user.id || null,
+        upload_url: uploadUrl,
+        access_token: googleAccessToken,
+      })
+      .select("id")
+      .single();
+
+    if (insertErr || !sessionRow) {
+      console.error("Failed to store upload session:", insertErr);
+      return NextResponse.json({ error: "Could not create upload session" }, { status: 500 });
+    }
+
+    return NextResponse.json({ sessionId: sessionRow.id });
   } catch (e) {
     console.error("upload-start failed:", e);
     return NextResponse.json(

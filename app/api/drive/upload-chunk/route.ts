@@ -1,46 +1,49 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/requireRole";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+
+export const maxDuration = 300; // allow up to 5 min per chunk on Vercel Pro
 
 /**
- * PUT /api/drive/upload-chunk
+ * PUT /api/drive/upload-chunk?sid=<sessionId>&start=<n>&end=<n>&total=<n>
  *
- * Receives a chunk of file data and forwards it to Google Drive's resumable
- * upload endpoint. Upload metadata is sent via custom headers to avoid
- * URL length issues on Vercel.
+ * Forwards a chunk of file bytes to Google Drive's resumable upload URL.
+ * The session (Google upload URL + token) is looked up from Supabase by the
+ * short `sid`, so requests stay small and don't trip Vercel's firewall.
  *
- * Headers:
- *   x-upload-url: The Google resumable upload URL
- *   x-google-token: The user's Google access token
- *   x-chunk-start: Byte offset of this chunk
- *   x-chunk-end: Last byte index of this chunk (inclusive)
- *   x-file-total: Total file size in bytes
- *
- * Body: Raw chunk bytes (application/octet-stream)
+ * Body: raw chunk bytes.
  */
 export async function PUT(req: NextRequest) {
   const { error } = await requireRole("admin", "superadmin");
   if (error) return error;
 
-  const uploadUrl = req.headers.get("x-upload-url");
-  const googleToken = req.headers.get("x-google-token");
-  const start = req.headers.get("x-chunk-start");
-  const end = req.headers.get("x-chunk-end");
-  const total = req.headers.get("x-file-total");
+  const sid = req.nextUrl.searchParams.get("sid");
+  const start = req.nextUrl.searchParams.get("start");
+  const end = req.nextUrl.searchParams.get("end");
+  const total = req.nextUrl.searchParams.get("total");
 
-  if (!uploadUrl || !googleToken || !start || !end || !total) {
-    return NextResponse.json(
-      { error: "Missing headers: x-upload-url, x-google-token, x-chunk-start, x-chunk-end, x-file-total" },
-      { status: 400 },
-    );
+  if (!sid || !start || !end || !total) {
+    return NextResponse.json({ error: "Missing query params: sid, start, end, total" }, { status: 400 });
+  }
+
+  // Look up the resumable session
+  const { data: sessionRow, error: lookupErr } = await supabaseAdmin
+    .from("upload_sessions")
+    .select("upload_url, access_token")
+    .eq("id", sid)
+    .maybeSingle();
+
+  if (lookupErr || !sessionRow) {
+    return NextResponse.json({ error: "Upload session not found or expired" }, { status: 404 });
   }
 
   const chunkBody = await req.arrayBuffer();
   const contentRange = `bytes ${start}-${end}/${total}`;
 
-  const googleRes = await fetch(uploadUrl, {
+  const googleRes = await fetch(sessionRow.upload_url, {
     method: "PUT",
     headers: {
-      authorization: `Bearer ${googleToken}`,
+      authorization: `Bearer ${sessionRow.access_token}`,
       "content-length": String(chunkBody.byteLength),
       "content-range": contentRange,
     },
@@ -49,13 +52,14 @@ export async function PUT(req: NextRequest) {
 
   // 308 = Resume Incomplete (more chunks expected)
   if (googleRes.status === 308) {
-    const range = googleRes.headers.get("range");
-    return NextResponse.json({ done: false, range }, { status: 200 });
+    return NextResponse.json({ done: false }, { status: 200 });
   }
 
   // 200/201 = Upload complete
   if (googleRes.ok) {
     const data = await googleRes.json().catch(() => ({})) as { id?: string };
+    // Clean up the session row now that the upload is done
+    await supabaseAdmin.from("upload_sessions").delete().eq("id", sid);
     return NextResponse.json({ done: true, fileId: data.id ?? "" });
   }
 

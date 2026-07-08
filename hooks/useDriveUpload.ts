@@ -53,7 +53,7 @@ export function useDriveUpload() {
           throw new Error(msg);
         }
 
-        const { uploadUrl, token } = await startRes.json() as { uploadUrl: string; token: string };
+        const { sessionId } = await startRes.json() as { sessionId: string };
 
         // 2. Upload in chunks
         let offset = 0;
@@ -68,16 +68,16 @@ export function useDriveUpload() {
           const end = Math.min(offset + CHUNK_SIZE, totalSize) - 1;
           const chunk = file.slice(offset, end + 1);
 
-          const chunkRes = await fetch("/api/drive/upload-chunk", {
+          const params = new URLSearchParams({
+            sid: sessionId,
+            start: String(offset),
+            end: String(end),
+            total: String(totalSize),
+          });
+
+          const chunkRes = await fetch(`/api/drive/upload-chunk?${params.toString()}`, {
             method: "PUT",
             credentials: "same-origin",
-            headers: {
-              "x-upload-url": uploadUrl,
-              "x-google-token": token,
-              "x-chunk-start": String(offset),
-              "x-chunk-end": String(end),
-              "x-file-total": String(totalSize),
-            },
             body: chunk,
           });
 
