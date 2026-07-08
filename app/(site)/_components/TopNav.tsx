@@ -62,6 +62,13 @@ export function TopNav() {
               >
                 <LogOut size={18} />
               </button>
+              <button
+                aria-label="Open menu"
+                onClick={() => setOpen(true)}
+                className="grid h-9 w-9 place-items-center rounded-full bg-[color:var(--color-surface-2)] text-[color:var(--color-text-secondary)] md:hidden"
+              >
+                <Menu size={18} />
+              </button>
             </>
           ) : (
             <>

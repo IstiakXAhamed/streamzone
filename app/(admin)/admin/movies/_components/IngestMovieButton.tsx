@@ -32,15 +32,13 @@ export function IngestMovieButton() {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
 
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<FormValues>({
     defaultValues: defaults,
   });
 
-  // Called by hidden inputs whenever the file pickers set a value
-  const bind = (field: keyof FormValues) => ({
-    value: "" as string,
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setValue(field, e.target.value, { shouldValidate: true }),
-  });
+  const driveFileId = watch("driveFileId");
+
+  // No-op: DriveFilePicker calls setValue directly via onPicked.
 
   async function submit(v: FormValues) {
     setBusy(true); setErr(null); setOk(false);
@@ -102,24 +100,23 @@ export function IngestMovieButton() {
             <Field label="Slug (optional)">
               <Input {...register("slug")} placeholder="inception" />
             </Field>
-            <Field label="Video file *">
+            <Field label="Video file *" error={errors.driveFileId?.message}>
               <DriveFilePicker label="Choose video file" onPicked={(id) => setValue("driveFileId", id, { shouldValidate: true })} />
-              <input type="hidden" {...bind("driveFileId")} />
-              <Err error={errors.driveFileId?.message} />
+              <input type="hidden" {...register("driveFileId", { required: "Video file is required", minLength: { value: 5, message: "Invalid file ID" } })} />
             </Field>
 
             <div className="grid grid-cols-3 gap-3">
               <Field label="Poster image">
                 <DriveFilePicker label="Upload poster" accept="image/*" onPicked={(id) => setValue("posterDriveFileId", id)} />
-                <input type="hidden" {...bind("posterDriveFileId")} />
+                <input type="hidden" {...register("posterDriveFileId")} />
               </Field>
               <Field label="Backdrop image">
                 <DriveFilePicker label="Upload backdrop" accept="image/*" onPicked={(id) => setValue("backdropDriveFileId", id)} />
-                <input type="hidden" {...bind("backdropDriveFileId")} />
+                <input type="hidden" {...register("backdropDriveFileId")} />
               </Field>
               <Field label="Trailer video">
                 <DriveFilePicker label="Upload trailer" accept="video/*" onPicked={(id) => setValue("trailerDriveFileId", id)} />
-                <input type="hidden" {...bind("trailerDriveFileId")} />
+                <input type="hidden" {...register("trailerDriveFileId")} />
               </Field>
             </div>
             <Field label="Year">

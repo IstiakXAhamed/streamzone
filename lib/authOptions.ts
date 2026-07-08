@@ -53,35 +53,37 @@ async function resolveUserRole(email: string): Promise<{ role: Role; status: Use
   return { role: "user", status: "pending" };
 }
 
+const useSecureCookies = process.env.NODE_ENV === "production";
+
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   cookies: {
     sessionToken: {
-      name: `__Secure-next-auth.session-token`,
+      name: useSecureCookies ? `__Secure-next-auth.session-token` : `next-auth.session-token`,
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: true,
+        secure: useSecureCookies,
       },
     },
     callbackUrl: {
-      name: `__Secure-next-auth.callback-url`,
+      name: useSecureCookies ? `__Secure-next-auth.callback-url` : `next-auth.callback-url`,
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: true,
+        secure: useSecureCookies,
       },
     },
     csrfToken: {
-      name: `__Host-next-auth.csrf-token`,
+      name: useSecureCookies ? `__Host-next-auth.csrf-token` : `next-auth.csrf-token`,
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: true,
+        secure: useSecureCookies,
       },
     },
   },

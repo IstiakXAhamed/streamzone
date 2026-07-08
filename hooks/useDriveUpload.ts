@@ -39,7 +39,9 @@ export function useDriveUpload() {
       try { startJson = JSON.parse(startText); } catch { /* empty body */ }
       if (!startRes.ok) {
         setBusy(false);
-        throw new Error((startJson.error as string) ?? `upload-start failed: ${startRes.status}`);
+        const msg = (startJson.error as string) ?? `upload-start failed: ${startRes.status}`;
+        setError(msg);
+        throw new Error(msg);
       }
       const uploadUrl = startJson.uploadUrl as string;
       const fileId = startJson.fileId as string;
@@ -67,11 +69,13 @@ export function useDriveUpload() {
               thumbnailLink: null,
             });
           } else {
-            reject(new Error(`Drive PUT failed: ${xhr.status}`));
+            const msg = `Drive PUT failed: ${xhr.status}`;
+            setError(msg);
+            reject(new Error(msg));
           }
         };
-        xhr.onerror = () => { setBusy(false); reject(new Error("Drive PUT network error")); };
-        xhr.onabort = () => { setBusy(false); reject(new Error("Upload cancelled")); };
+        xhr.onerror = () => { setBusy(false); const msg = "Drive PUT network error"; setError(msg); reject(new Error(msg)); };
+        xhr.onabort = () => { setBusy(false); const msg = "Upload cancelled"; setError(msg); reject(new Error(msg)); };
         xhr.send(file);
       });
 
