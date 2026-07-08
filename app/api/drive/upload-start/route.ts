@@ -103,7 +103,10 @@ export async function POST(req: Request) {
 
     if (insertErr || !sessionRow) {
       console.error("Failed to store upload session:", insertErr);
-      return NextResponse.json({ error: "Could not create upload session" }, { status: 500 });
+      return NextResponse.json(
+        { error: `Could not create upload session: ${insertErr?.message ?? "unknown"}. Have you run the 0005_upload_sessions migration?` },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({ sessionId: sessionRow.id });
