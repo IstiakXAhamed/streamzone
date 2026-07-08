@@ -5,12 +5,14 @@ import { authOptions } from "@/lib/authOptions";
 import { getDriveFileStreamUrl } from "@/lib/googleDrive";
 import type { NextRequest } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/stream/episode/:episodeId
- * Returns a direct Google Drive stream URL for an approved user (NextAuth session).
+ * Proxies episode video bytes from Google Drive. Supports Range requests.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ episodeId: string }> },
 ) {
   const { episodeId } = await params;
@@ -25,11 +27,8 @@ export async function GET(
     .select("id,status")
     .ilike("email", session.user.email)
     .maybeSingle();
-  if (!urow) {
+  if (!urow || urow.status !== "approved") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (urow.status !== "approved") {
-    return NextResponse.json({ error: "Account not approved" }, { status: 403 });
   }
 
   const { data: episode } = await supabase
@@ -41,7 +40,6 @@ export async function GET(
     return NextResponse.json({ error: "Episode not found" }, { status: 404 });
   }
 
-  // ensure parent series is public
   const { data: series } = await supabase
     .from("series")
     .select("id,is_public")
@@ -59,9 +57,32 @@ export async function GET(
     });
   } catch { /* ignore duplicates */ }
 
-  const url = await getDriveFileStreamUrl(episode.drive_file_id, {
+  const driveUrl = await getDriveFileStreamUrl(episode.drive_file_id, {
     readFromServiceAccount: true,
   });
 
-  return NextResponse.json({ url, title: episode.title, id: episode.id, seriesId: episode.series_id });
+  // Forward Range header for seeking support
+  const headers: Record<string, string> = {};
+  const rangeHeader = req.headers.get("range");
+  if (rangeHeader) headers["Range"] = rangeHeader;
+
+  const driveRes = await fetch(driveUrl, { headers });
+
+  if (!driveRes.ok && driveRes.status !== 206) {
+    return NextResponse.json({ error: `Drive returned ${driveRes.status}` }, { status: 502 });
+  }
+
+  const resHeaders = new Headers();
+  resHeaders.set("Content-Type", driveRes.headers.get("content-type") ?? "video/mp4");
+  resHeaders.set("Accept-Ranges", "bytes");
+  const cl = driveRes.headers.get("content-length");
+  if (cl) resHeaders.set("Content-Length", cl);
+  const cr = driveRes.headers.get("content-range");
+  if (cr) resHeaders.set("Content-Range", cr);
+  resHeaders.set("Cache-Control", "private, max-age=3600");
+
+  return new Response(driveRes.body, {
+    status: driveRes.status,
+    headers: resHeaders,
+  });
 }

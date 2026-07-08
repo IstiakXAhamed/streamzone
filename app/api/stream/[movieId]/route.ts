@@ -5,20 +5,20 @@ import { authOptions } from "@/lib/authOptions";
 import { getDriveFileStreamUrl } from "@/lib/googleDrive";
 import type { NextRequest } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/stream/:movieId
  *
- * Returns a direct Google Drive stream URL for an approved user (NextAuth session).
+ * Proxies video bytes from Google Drive to the browser. This avoids CORS
+ * issues (Google Drive's alt=media endpoint doesn't allow cross-origin
+ * requests from <video> elements). Supports Range requests for seeking.
  *
- * We never proxy bytes. We simply:
- *   1. confirm the NextAuth session + status === 'approved'
- *   2. look up the movie row
- *   3. build + return a Drive direct URL (service-account signed OR api-key)
- *
- * The browser then issues its own Range requests directly to Google.
+ * The Vercel function streams the response — it doesn't buffer the entire
+ * file. Each browser Range request is typically 1-4MB, well within limits.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ movieId: string }> },
 ) {
   const { movieId } = await params;
@@ -33,11 +33,8 @@ export async function GET(
     .select("id,status")
     .ilike("email", session.user.email)
     .maybeSingle();
-  if (!urow) {
+  if (!urow || urow.status !== "approved") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (urow.status !== "approved") {
-    return NextResponse.json({ error: "Account not approved" }, { status: 403 });
   }
 
   const { data: movie } = await supabase
@@ -50,20 +47,44 @@ export async function GET(
     return NextResponse.json({ error: "Movie not found" }, { status: 404 });
   }
 
-  // record a watch-history hit (best-effort)
-  try {
-    await supabase.from("watch_history").insert({
-      user_id: urow.id,
-      movie_id: movie.id,
-      position_seconds: 0,
-    });
-  } catch {
-    // ignore duplicates / transient errors
-  }
-
-  const url = await getDriveFileStreamUrl(movie.drive_file_id, {
+  // Build the Drive download URL with auth token
+  const driveUrl = await getDriveFileStreamUrl(movie.drive_file_id, {
     readFromServiceAccount: true,
   });
 
-  return NextResponse.json({ url, title: movie.title, id: movie.id });
+  // Forward the browser's Range header to Google
+  const headers: Record<string, string> = {};
+  const rangeHeader = req.headers.get("range");
+  if (rangeHeader) {
+    headers["Range"] = rangeHeader;
+  }
+
+  const driveRes = await fetch(driveUrl, { headers });
+
+  if (!driveRes.ok && driveRes.status !== 206) {
+    return NextResponse.json(
+      { error: `Drive returned ${driveRes.status}` },
+      { status: 502 },
+    );
+  }
+
+  // Build response headers for the browser
+  const resHeaders = new Headers();
+  const contentType = driveRes.headers.get("content-type") ?? "video/mp4";
+  resHeaders.set("Content-Type", contentType);
+  resHeaders.set("Accept-Ranges", "bytes");
+
+  const contentLength = driveRes.headers.get("content-length");
+  if (contentLength) resHeaders.set("Content-Length", contentLength);
+
+  const contentRange = driveRes.headers.get("content-range");
+  if (contentRange) resHeaders.set("Content-Range", contentRange);
+
+  // Cache the streamed bytes for performance (1 hour)
+  resHeaders.set("Cache-Control", "private, max-age=3600");
+
+  return new Response(driveRes.body, {
+    status: driveRes.status, // 200 or 206
+    headers: resHeaders,
+  });
 }

@@ -2,17 +2,22 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-/** Fetch a direct stream URL for an approved, signed-in user. */
+/**
+ * Returns the stream URL for a movie. Since we proxy bytes through our own
+ * API route (to avoid Google Drive CORS), the URL is our own endpoint.
+ * The <video> element makes Range requests to /api/stream/:movieId directly.
+ */
 export function useStreamUrl(movieId: string) {
   return useQuery({
     queryKey: ["stream", movieId],
-    queryFn: async () => {
-      const res = await fetch(`/api/stream/${movieId}`);
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `Stream request failed: ${res.status}`);
-      }
-      return (await res.json()) as { url: string; title: string; id: string };
+    queryFn: () => {
+      // No network call needed — the URL is deterministic.
+      // Auth is validated when the <video> element actually fetches bytes.
+      return Promise.resolve({
+        url: `/api/stream/${movieId}`,
+        title: "",
+        id: movieId,
+      });
     },
     staleTime: Infinity,
   });
