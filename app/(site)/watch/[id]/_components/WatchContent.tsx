@@ -46,6 +46,12 @@ export function WatchContent({
         >
           Back to details
         </a>
+        <a
+          href={`/party/create?movie=${movieId}`}
+          className="rounded-full bg-[color:var(--color-brand)] px-4 py-2 text-sm font-medium text-white"
+        >
+          Watch with friends
+        </a>
       </div>
     </div>
   );
