@@ -87,16 +87,16 @@ export async function getDriveFileStreamUrl(
 }
 
 /**
- * Create a Drive resumable-upload session. Returns the upload URL the browser
- * should PUT bytes to, plus the eventual Drive fileId. Server bandwidth is tiny
- * (~500 bytes); the actual file bytes travel browser -> Google directly.
+ * Create a Drive resumable-upload session. Returns the upload URL and access
+ * token. The browser will PUT bytes through our proxy endpoint which forwards
+ * them to Google with the service account token attached.
  */
 export async function createResumableUploadSession(input: {
   name: string;
   mimeType?: string;
   parentFolderId?: string;
   origin?: string;
-}): Promise<{ uploadUrl: string; fileId: string }> {
+}): Promise<{ uploadUrl: string; fileId: string; accessToken: string }> {
   const token = await getAccessToken();
   const metadata: Record<string, unknown> = { name: input.name };
   if (input.parentFolderId) metadata.parents = [input.parentFolderId];
@@ -106,8 +106,6 @@ export async function createResumableUploadSession(input: {
     "content-type": "application/json; charset=UTF-8",
     "x-upload-content-type": input.mimeType ?? "application/octet-stream",
   };
-  // Pass the browser origin so Google includes it in CORS headers on the
-  // resumable PUT endpoint. Without this, browsers block the direct upload.
   if (input.origin) {
     headers["origin"] = input.origin;
   }
@@ -127,11 +125,7 @@ export async function createResumableUploadSession(input: {
   const uploadUrl = res.headers.get("location");
   if (!uploadUrl) throw new Error("Drive resumable session returned no Location header");
 
-  // The file ID is NOT available until the upload completes. We need to do a
-  // finalize call after the browser finishes the PUT. For now return a placeholder
-  // and let the client call /api/drive/upload-complete to get the real file ID.
-  // However, Google embeds the upload_id in the URL which we can use to correlate.
-  return { uploadUrl, fileId: "" };
+  return { uploadUrl, fileId: "", accessToken: token };
 }
 
 /**

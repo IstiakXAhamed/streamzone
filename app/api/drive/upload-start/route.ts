@@ -1,6 +1,25 @@
 import { NextResponse } from "next/server";
 import { createResumableUploadSession } from "@/lib/googleDrive";
 import { requireRole } from "@/lib/requireRole";
+import { randomUUID } from "crypto";
+
+/**
+ * In-memory map of upload sessions. In production you'd use Redis or similar,
+ * but for a single-instance deploy this is fine. Entries expire after 24h.
+ */
+const uploadSessions = new Map<string, { uploadUrl: string; accessToken: string; createdAt: number }>();
+
+// Cleanup stale sessions every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, session] of uploadSessions) {
+    if (now - session.createdAt > 24 * 60 * 60 * 1000) uploadSessions.delete(id);
+  }
+}, 10 * 60 * 1000);
+
+export function getUploadSession(sessionId: string) {
+  return uploadSessions.get(sessionId) ?? null;
+}
 
 export async function POST(req: Request) {
   try {
@@ -34,7 +53,16 @@ export async function POST(req: Request) {
       parentFolderId: parsed.parentFolderId ?? process.env.NEXT_PUBLIC_MOVIEZONE_DRIVE_FOLDER_ID,
       origin: req.headers.get("origin") ?? undefined,
     });
-    return NextResponse.json(result);
+
+    // Store the session server-side; give the client an opaque session ID
+    const sessionId = randomUUID();
+    uploadSessions.set(sessionId, {
+      uploadUrl: result.uploadUrl,
+      accessToken: result.accessToken,
+      createdAt: Date.now(),
+    });
+
+    return NextResponse.json({ sessionId });
   } catch (e) {
     console.error("upload-start failed:", e);
     return NextResponse.json(

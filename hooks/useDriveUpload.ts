@@ -12,7 +12,7 @@ export interface DriveUploadResult {
 
 /**
  * Pick a file → get a Drive resumable session from our server → PUT bytes
- * directly browser→Google Drive (zero server bandwidth, no size limit).
+ * through our proxy → Google Drive (avoids CORS, no token exposure).
  */
 export function useDriveUpload() {
   const [progress, setProgress] = useState(0);
@@ -27,7 +27,7 @@ export function useDriveUpload() {
       setProgress(0);
       onProgress?.(0);
 
-      // 1. Server creates a resumable session (tiny bytes). Returns uploadUrl + fileId.
+      // 1. Server creates a resumable session and returns an opaque sessionId.
       const startRes = await fetch("/api/drive/upload-start", {
         method: "POST",
         credentials: "same-origin",
@@ -43,15 +43,14 @@ export function useDriveUpload() {
         setError(msg);
         throw new Error(msg);
       }
-      const uploadUrl = startJson.uploadUrl as string;
-      const fileId = startJson.fileId as string;
+      const sessionId = startJson.sessionId as string;
 
-      // 2. PUT bytes directly to Google (no server proxy → no size limit).
+      // 2. PUT bytes through our proxy (handles auth with Google).
       const result = await new Promise<DriveUploadResult>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         abortRef.current = xhr;
-        xhr.open("PUT", uploadUrl, true);
-        // Do NOT set Content-Type here — the resumable session already declared it.
+        xhr.open("PUT", `/api/drive/upload-proxy?sessionId=${encodeURIComponent(sessionId)}`, true);
+        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
         xhr.upload.onprogress = (e) => {
           if (!e.lengthComputable) return;
           const pct = Math.round((e.loaded / e.total) * 100);
@@ -61,26 +60,29 @@ export function useDriveUpload() {
         xhr.onload = () => {
           setBusy(false);
           if (xhr.status >= 200 && xhr.status < 300) {
-            // Google returns the file metadata (including id) in the response body
-            let driveFileId = fileId;
+            let fileId = "";
             try {
-              const respData = JSON.parse(xhr.responseText) as { id?: string };
-              if (respData.id) driveFileId = respData.id;
-            } catch { /* use fallback fileId */ }
+              const respData = JSON.parse(xhr.responseText) as { fileId?: string };
+              fileId = respData.fileId ?? "";
+            } catch { /* use empty */ }
             resolve({
-              id: driveFileId,
+              id: fileId,
               name: file.name,
               size: file.size,
               mimeType: file.type,
               thumbnailLink: null,
             });
           } else {
-            const msg = `Drive PUT failed: ${xhr.status}`;
+            let msg = `Upload failed: ${xhr.status}`;
+            try {
+              const errData = JSON.parse(xhr.responseText) as { error?: string };
+              if (errData.error) msg = errData.error;
+            } catch { /* use default */ }
             setError(msg);
             reject(new Error(msg));
           }
         };
-        xhr.onerror = () => { setBusy(false); const msg = "Drive PUT network error"; setError(msg); reject(new Error(msg)); };
+        xhr.onerror = () => { setBusy(false); const msg = "Upload network error"; setError(msg); reject(new Error(msg)); };
         xhr.onabort = () => { setBusy(false); const msg = "Upload cancelled"; setError(msg); reject(new Error(msg)); };
         xhr.send(file);
       });
