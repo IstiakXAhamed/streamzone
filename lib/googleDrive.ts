@@ -87,16 +87,18 @@ export async function getDriveFileStreamUrl(
 }
 
 /**
- * Create a Drive resumable-upload session. Returns the upload URL and access
- * token. The browser will PUT bytes through our proxy endpoint which forwards
- * them to Google with the service account token attached.
+ * Create a Drive resumable-upload session. Returns a resumable upload URL that
+ * includes the access token as a query parameter, allowing the browser to PUT
+ * bytes directly to Google without needing an Authorization header.
+ *
+ * This avoids Vercel's body size limits since bytes go browser → Google directly.
  */
 export async function createResumableUploadSession(input: {
   name: string;
   mimeType?: string;
   parentFolderId?: string;
   origin?: string;
-}): Promise<{ uploadUrl: string; fileId: string; accessToken: string }> {
+}): Promise<{ uploadUrl: string }> {
   const token = await getAccessToken();
   const metadata: Record<string, unknown> = { name: input.name };
   if (input.parentFolderId) metadata.parents = [input.parentFolderId];
@@ -106,6 +108,8 @@ export async function createResumableUploadSession(input: {
     "content-type": "application/json; charset=UTF-8",
     "x-upload-content-type": input.mimeType ?? "application/octet-stream",
   };
+  // The origin header tells Google which browser origin to whitelist in CORS
+  // responses on the resumable PUT URL.
   if (input.origin) {
     headers["origin"] = input.origin;
   }
@@ -122,10 +126,15 @@ export async function createResumableUploadSession(input: {
     const errText = await res.text();
     throw new Error(`Drive resumable session failed: ${res.status} ${errText.slice(0, 200)}`);
   }
-  const uploadUrl = res.headers.get("location");
-  if (!uploadUrl) throw new Error("Drive resumable session returned no Location header");
+  const locationUrl = res.headers.get("location");
+  if (!locationUrl) throw new Error("Drive resumable session returned no Location header");
 
-  return { uploadUrl, fileId: "", accessToken: token };
+  // Append the access token to the resumable URL so the browser can PUT
+  // without an Authorization header (Google accepts token via query param).
+  const separator = locationUrl.includes("?") ? "&" : "?";
+  const uploadUrl = `${locationUrl}${separator}access_token=${encodeURIComponent(token)}`;
+
+  return { uploadUrl };
 }
 
 /**

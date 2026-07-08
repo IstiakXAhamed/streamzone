@@ -1,29 +1,17 @@
 import { NextResponse } from "next/server";
 import { createResumableUploadSession } from "@/lib/googleDrive";
 import { requireRole } from "@/lib/requireRole";
-import { randomUUID } from "crypto";
 
 /**
- * In-memory map of upload sessions. In production you'd use Redis or similar,
- * but for a single-instance deploy this is fine. Entries expire after 24h.
+ * POST /api/drive/upload-start
+ *
+ * Admin-only. Creates a Google Drive resumable upload session and returns the
+ * upload URL (with embedded access token) so the browser can PUT bytes directly
+ * to Google. This keeps our server out of the byte path — no size limits.
  */
-const uploadSessions = new Map<string, { uploadUrl: string; accessToken: string; createdAt: number }>();
-
-// Cleanup stale sessions every 10 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, session] of uploadSessions) {
-    if (now - session.createdAt > 24 * 60 * 60 * 1000) uploadSessions.delete(id);
-  }
-}, 10 * 60 * 1000);
-
-export function getUploadSession(sessionId: string) {
-  return uploadSessions.get(sessionId) ?? null;
-}
-
 export async function POST(req: Request) {
   try {
-    const { user, error } = await requireRole("admin", "superadmin");
+    const { error } = await requireRole("admin", "superadmin");
     if (error) return error;
 
     const contentType = req.headers.get("content-type") ?? "";
@@ -54,15 +42,7 @@ export async function POST(req: Request) {
       origin: req.headers.get("origin") ?? undefined,
     });
 
-    // Store the session server-side; give the client an opaque session ID
-    const sessionId = randomUUID();
-    uploadSessions.set(sessionId, {
-      uploadUrl: result.uploadUrl,
-      accessToken: result.accessToken,
-      createdAt: Date.now(),
-    });
-
-    return NextResponse.json({ sessionId });
+    return NextResponse.json({ uploadUrl: result.uploadUrl });
   } catch (e) {
     console.error("upload-start failed:", e);
     return NextResponse.json(
