@@ -87,9 +87,15 @@ export function PlayerClient({ src, title, poster, subtitleSrc, subtitleLabel, m
 
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
-      <video ref={videoRef} poster={poster ?? undefined} playsInline className="h-full w-full object-contain" />
-      <div onClick={toggleControls} className="absolute inset-0 z-[1]" />
-      <PlayerControls player={instance} title={title} visible={showControls} onToggle={toggleControls} />
+      {/* Use native video element — Plyr has compatibility issues with React 19 / Next.js 16 */}
+      <video
+        ref={videoRef}
+        src={src}
+        poster={poster ?? undefined}
+        playsInline
+        controls
+        className="h-full w-full object-contain"
+      />
     </div>
   );
 }
