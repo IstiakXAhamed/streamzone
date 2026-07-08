@@ -83,7 +83,8 @@ export function useDriveUpload() {
 
           if (!chunkRes.ok) {
             const data = await chunkRes.json().catch(() => ({})) as { error?: string; details?: string };
-            const msg = data.error ?? `Chunk upload failed: ${chunkRes.status}`;
+            // Surface Google's actual error (details) so failures are diagnosable.
+            const msg = [data.error, data.details].filter(Boolean).join(" — ") || `Chunk upload failed: ${chunkRes.status}`;
             setError(msg);
             throw new Error(msg);
           }
