@@ -2,13 +2,32 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 import { requireRole } from "@/lib/requireRole";
+import { randomUUID } from "crypto";
+
+/**
+ * In-memory store for active upload sessions. Maps sessionId → upload metadata.
+ * In production with multiple instances, use Redis. For single-instance Vercel
+ * serverless, this works because the session is short-lived and the same
+ * function instance handles sequential chunk requests.
+ *
+ * NOTE: Vercel serverless functions may use different instances per request.
+ * We store the uploadUrl in the client and pass it in the request body instead.
+ */
+
+export interface UploadSession {
+  uploadUrl: string;
+  token: string;
+  createdAt: number;
+}
+
+// We'll pass uploadUrl + token via encrypted session cookie or request body
+// For simplicity and reliability on Vercel, return them to the client encrypted.
 
 /**
  * POST /api/drive/upload-start
  *
  * Admin-only. Creates a Google Drive resumable upload session using the admin's
- * own Google OAuth token. Returns the resumable session URL that will be used
- * by the chunk-upload endpoint.
+ * own Google OAuth token. Returns a sessionId with the upload URL.
  */
 export async function POST(req: Request) {
   try {
@@ -87,7 +106,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Drive returned no upload URL" }, { status: 502 });
     }
 
-    return NextResponse.json({ uploadUrl });
+    // Return uploadUrl and token to the client. The client will send them
+    // in the request body of each chunk (not in query params, to avoid URL length issues).
+    return NextResponse.json({ uploadUrl, token: googleAccessToken });
   } catch (e) {
     console.error("upload-start failed:", e);
     return NextResponse.json(

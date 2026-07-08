@@ -10,14 +10,14 @@ export interface DriveUploadResult {
   thumbnailLink: string | null;
 }
 
-// 3.5MB chunks — safely under Vercel's 4.5MB request body limit
-const CHUNK_SIZE = 3.5 * 1024 * 1024;
+// 3.5MB chunks — safely under Vercel's 4.5MB request body limit.
+// Must be a multiple of 256KB (Google's requirement for resumable uploads).
+const CHUNK_SIZE = 256 * 1024 * 14; // 3,670,016 bytes = 3.5MB
 
 /**
  * Uploads a file to Google Drive via chunked resumable upload through our server.
  * Flow: browser → /api/drive/upload-chunk → Google Drive
- * Each chunk is under 4MB so it works on Vercel's serverless functions.
- * Supports files of any size (50GB+).
+ * Supports files of any size.
  */
 export function useDriveUpload() {
   const [progress, setProgress] = useState(0);
@@ -34,7 +34,7 @@ export function useDriveUpload() {
       onProgress?.(0);
 
       try {
-        // 1. Create a resumable upload session via our server
+        // 1. Create a resumable upload session
         const startRes = await fetch("/api/drive/upload-start", {
           method: "POST",
           credentials: "same-origin",
@@ -53,9 +53,9 @@ export function useDriveUpload() {
           throw new Error(msg);
         }
 
-        const { uploadUrl } = await startRes.json() as { uploadUrl: string };
+        const { uploadUrl, token } = await startRes.json() as { uploadUrl: string; token: string };
 
-        // 2. Upload file in chunks through our server proxy
+        // 2. Upload in chunks
         let offset = 0;
         let fileId = "";
         const totalSize = file.size;
@@ -68,27 +68,27 @@ export function useDriveUpload() {
           const end = Math.min(offset + CHUNK_SIZE, totalSize) - 1;
           const chunk = file.slice(offset, end + 1);
 
-          const params = new URLSearchParams({
-            uploadUrl,
-            start: String(offset),
-            end: String(end),
-            total: String(totalSize),
-          });
-
-          const chunkRes = await fetch(`/api/drive/upload-chunk?${params.toString()}`, {
+          const chunkRes = await fetch("/api/drive/upload-chunk", {
             method: "PUT",
             credentials: "same-origin",
+            headers: {
+              "x-upload-url": uploadUrl,
+              "x-google-token": token,
+              "x-chunk-start": String(offset),
+              "x-chunk-end": String(end),
+              "x-file-total": String(totalSize),
+            },
             body: chunk,
           });
 
           if (!chunkRes.ok) {
-            const data = await chunkRes.json().catch(() => ({})) as { error?: string };
+            const data = await chunkRes.json().catch(() => ({})) as { error?: string; details?: string };
             const msg = data.error ?? `Chunk upload failed: ${chunkRes.status}`;
             setError(msg);
             throw new Error(msg);
           }
 
-          const result = await chunkRes.json() as { done: boolean; fileId?: string; range?: string };
+          const result = await chunkRes.json() as { done: boolean; fileId?: string };
 
           if (result.done) {
             fileId = result.fileId ?? "";
