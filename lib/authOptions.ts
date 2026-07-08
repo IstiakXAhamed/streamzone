@@ -145,16 +145,20 @@ export const authOptions: NextAuthOptions = {
         token.googleRefreshToken = account.refresh_token;
         token.googleTokenExpires = account.expires_at ? account.expires_at * 1000 : 0;
       }
-      if (user?.email) {
-        const { role, status } = await resolveUserRole(user.email);
+      // Always refresh role/status/uid from DB to pick up admin approvals
+      const email = (user?.email ?? token.email) as string | undefined;
+      if (email) {
+        const { role, status } = await resolveUserRole(email);
         token.role = role;
         token.status = status;
-        const { data } = await supabaseAdmin
-          .from("users")
-          .select("id")
-          .ilike("email", emailOf(user.email))
-          .maybeSingle();
-        token.uid = data?.id ?? null;
+        if (!token.uid) {
+          const { data } = await supabaseAdmin
+            .from("users")
+            .select("id")
+            .ilike("email", emailOf(email))
+            .maybeSingle();
+          token.uid = data?.id ?? null;
+        }
       }
       // Refresh Google access token if expired
       if (token.googleRefreshToken && token.googleTokenExpires && Date.now() > (token.googleTokenExpires as number)) {
