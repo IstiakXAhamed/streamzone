@@ -15,3 +15,8 @@ create table if not exists public.upload_sessions (
 
 -- Index for cleanup of stale sessions
 create index if not exists upload_sessions_created_at_idx on public.upload_sessions (created_at);
+
+-- Only the service role (used by our server-side API routes) may touch this
+-- table. It contains OAuth tokens, so it must never be exposed to anon/auth roles.
+grant all privileges on table public.upload_sessions to service_role;
+alter table public.upload_sessions enable row level security;

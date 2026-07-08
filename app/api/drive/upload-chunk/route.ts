@@ -40,10 +40,13 @@ export async function PUT(req: NextRequest) {
   const chunkBody = await req.arrayBuffer();
   const contentRange = `bytes ${start}-${end}/${total}`;
 
+  // NOTE: Do NOT send an Authorization header here. The resumable session URL
+  // (with its embedded upload_id) is self-authenticating. Sending a Bearer
+  // token that may have expired mid-upload causes Google to reject the chunk
+  // with 403 — which is why uploads previously died on a late chunk.
   const googleRes = await fetch(sessionRow.upload_url, {
     method: "PUT",
     headers: {
-      authorization: `Bearer ${sessionRow.access_token}`,
       "content-length": String(chunkBody.byteLength),
       "content-range": contentRange,
     },
