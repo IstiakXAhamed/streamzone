@@ -42,9 +42,7 @@ export function DriveFilePicker({ label, accept = "*/*", onPicked }: Props) {
       </label>
       {error && (
         <span className="text-xs text-[color:var(--color-brand)]">
-          {error.includes("CORS") || error.includes("Drive PUT")
-            ? "Upload blocked — please share your Drive folder with moviezone-drive@moviezone-501600.iam.gserviceaccount.com as Editor, then try again."
-            : error}
+          {error}
         </span>
       )}
     </div>

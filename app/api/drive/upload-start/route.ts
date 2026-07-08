@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       name: parsed.name,
       mimeType: parsed.mimeType,
       parentFolderId: parsed.parentFolderId ?? process.env.NEXT_PUBLIC_MOVIEZONE_DRIVE_FOLDER_ID,
+      origin: req.headers.get("origin") ?? undefined,
     });
     return NextResponse.json(result);
   } catch (e) {

@@ -61,8 +61,14 @@ export function useDriveUpload() {
         xhr.onload = () => {
           setBusy(false);
           if (xhr.status >= 200 && xhr.status < 300) {
+            // Google returns the file metadata (including id) in the response body
+            let driveFileId = fileId;
+            try {
+              const respData = JSON.parse(xhr.responseText) as { id?: string };
+              if (respData.id) driveFileId = respData.id;
+            } catch { /* use fallback fileId */ }
             resolve({
-              id: fileId,
+              id: driveFileId,
               name: file.name,
               size: file.size,
               mimeType: file.type,

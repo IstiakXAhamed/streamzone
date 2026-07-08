@@ -95,20 +95,28 @@ export async function createResumableUploadSession(input: {
   name: string;
   mimeType?: string;
   parentFolderId?: string;
+  origin?: string;
 }): Promise<{ uploadUrl: string; fileId: string }> {
   const token = await getAccessToken();
   const metadata: Record<string, unknown> = { name: input.name };
   if (input.parentFolderId) metadata.parents = [input.parentFolderId];
 
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${token}`,
+    "content-type": "application/json; charset=UTF-8",
+    "x-upload-content-type": input.mimeType ?? "application/octet-stream",
+  };
+  // Pass the browser origin so Google includes it in CORS headers on the
+  // resumable PUT endpoint. Without this, browsers block the direct upload.
+  if (input.origin) {
+    headers["origin"] = input.origin;
+  }
+
   const res = await fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id",
     {
       method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json; charset=UTF-8",
-        "x-upload-content-type": input.mimeType ?? "application/octet-stream",
-      },
+      headers,
       body: JSON.stringify(metadata),
     },
   );
@@ -117,22 +125,13 @@ export async function createResumableUploadSession(input: {
     throw new Error(`Drive resumable session failed: ${res.status} ${errText.slice(0, 200)}`);
   }
   const uploadUrl = res.headers.get("location");
-  // Google's resumable-upload endpoint returns the fileId in the Location header,
-  // not the JSON body. Parse it from the URL to avoid an empty-body JSON error.
-  let fileId = "";
-  if (uploadUrl) {
-    const m = uploadUrl.match(/[?&]upload_id=([^&]+)/);
-    if (m) fileId = m[1];
-  }
-  // fall back to parsing the response body in case the format changes
-  if (!fileId) {
-    try {
-      const body = (await res.json()) as { id?: string };
-      fileId = body.id ?? "";
-    } catch { /* empty body — already handled above */ }
-  }
-  if (!uploadUrl || !fileId) throw new Error("Drive resumable session returned no location/fileId");
-  return { uploadUrl, fileId };
+  if (!uploadUrl) throw new Error("Drive resumable session returned no Location header");
+
+  // The file ID is NOT available until the upload completes. We need to do a
+  // finalize call after the browser finishes the PUT. For now return a placeholder
+  // and let the client call /api/drive/upload-complete to get the real file ID.
+  // However, Google embeds the upload_id in the URL which we can use to correlate.
+  return { uploadUrl, fileId: "" };
 }
 
 /**
