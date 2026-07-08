@@ -1,30 +1,29 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/authOptions";
 import { requireRole } from "@/lib/requireRole";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getStorageAccountToken } from "@/lib/googleDrive";
 
 /**
  * POST /api/drive/upload-start
  *
- * Admin-only. Creates a Google Drive resumable upload session using the admin's
- * own Google OAuth token (files count against THEIR Drive quota). Stores the
- * session URL + token in Supabase and returns a short sessionId. The chunk
- * endpoint uses that id — keeps requests small so Vercel's firewall doesn't
- * block them, and works across serverless instances.
+ * Admin-only. Creates a Google Drive resumable upload session using the
+ * dedicated STORAGE account's token (owns the 5TB). Files are owned by that
+ * account regardless of which admin is logged in. Stores the session URL in
+ * Supabase and returns a short sessionId; the chunk endpoint uses that id.
  */
 export async function POST(req: Request) {
   try {
     const { user, error } = await requireRole("admin", "superadmin");
     if (error) return error;
 
-    const session = await getServerSession(authOptions);
-    const googleAccessToken = (session as any)?.googleAccessToken as string | null;
-
-    if (!googleAccessToken) {
+    let storageToken: string;
+    try {
+      storageToken = await getStorageAccountToken();
+    } catch (e) {
+      console.error("Storage account token error:", e);
       return NextResponse.json(
-        { error: "Google Drive access not available. Please sign out and sign in again with Google to grant Drive permissions." },
-        { status: 401 },
+        { error: `Storage account not configured: ${(e as Error).message}` },
+        { status: 500 },
       );
     }
 
@@ -55,13 +54,13 @@ export async function POST(req: Request) {
 
     const mimeType = parsed.mimeType ?? "application/octet-stream";
 
-    // Create resumable upload session with the user's OAuth token
+    // Create resumable upload session as the storage account
     const res = await fetch(
       "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id",
       {
         method: "POST",
         headers: {
-          authorization: `Bearer ${googleAccessToken}`,
+          authorization: `Bearer ${storageToken}`,
           "content-type": "application/json; charset=UTF-8",
           "x-upload-content-type": mimeType,
           ...(parsed.fileSize ? { "x-upload-content-length": String(parsed.fileSize) } : {}),
@@ -73,12 +72,6 @@ export async function POST(req: Request) {
     if (!res.ok) {
       const errText = await res.text();
       console.error("Drive resumable session failed:", res.status, errText);
-      if (res.status === 401 || res.status === 403) {
-        return NextResponse.json(
-          { error: "Google token expired or insufficient permissions. Please sign out and sign in again." },
-          { status: 401 },
-        );
-      }
       return NextResponse.json(
         { error: `Drive session failed: ${res.status} — ${errText.slice(0, 300)}` },
         { status: 502 },
@@ -96,7 +89,7 @@ export async function POST(req: Request) {
       .insert({
         user_id: user.id || null,
         upload_url: uploadUrl,
-        access_token: googleAccessToken,
+        access_token: storageToken,
       })
       .select("id")
       .single();

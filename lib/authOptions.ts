@@ -93,12 +93,9 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
       authorization: {
         params: {
-          // Full Drive access so admins can upload into their existing movie
-          // folder (drive.file only allows writing to app-created files, which
-          // fails when committing into a pre-existing folder).
-          scope: "openid email profile https://www.googleapis.com/auth/drive",
-          access_type: "offline",
-          prompt: "consent",
+          // Basic profile only. Uploads use a dedicated storage-account refresh
+          // token (GOOGLE_DRIVE_REFRESH_TOKEN), not the admin's own Drive.
+          scope: "openid email profile",
         },
       },
     }),

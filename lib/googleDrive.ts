@@ -8,6 +8,53 @@
 
 let cachedSaKey: Record<string, unknown> | null = null;
 
+// Cache the storage-account access token in memory until shortly before expiry.
+let cachedStorageToken: { token: string; expiresAt: number } | null = null;
+
+/**
+ * Get an access token for the dedicated STORAGE Google account (the one that
+ * owns the 5TB of movie files) using a long-lived refresh token stored in env.
+ *
+ * This decouples "who is logged into the site" from "whose Drive stores the
+ * files". Admins log in with their own account, but uploads/reads always act
+ * as the storage account, so files are owned by (and billed to) that account.
+ */
+export async function getStorageAccountToken(): Promise<string> {
+  if (cachedStorageToken && Date.now() < cachedStorageToken.expiresAt - 60_000) {
+    return cachedStorageToken.token;
+  }
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error(
+      "Missing GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, or GOOGLE_DRIVE_REFRESH_TOKEN env vars for the storage account.",
+    );
+  }
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+  const data = (await res.json()) as { access_token?: string; expires_in?: number; error?: string; error_description?: string };
+  if (!res.ok || !data.access_token) {
+    throw new Error(`Storage account token refresh failed: ${data.error ?? res.status} ${data.error_description ?? ""}`.trim());
+  }
+
+  cachedStorageToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
+  };
+  return data.access_token;
+}
+
 function getServiceAccount(): Record<string, unknown> {
   if (cachedSaKey) return cachedSaKey;
   let b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
