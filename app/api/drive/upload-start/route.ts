@@ -7,9 +7,8 @@ import { requireRole } from "@/lib/requireRole";
  * POST /api/drive/upload-start
  *
  * Admin-only. Creates a Google Drive resumable upload session using the admin's
- * own Google OAuth token (so files count against THEIR Drive quota, not the
- * service account which has zero quota). Returns the upload URL with embedded
- * token for direct browser → Google upload with no size limit.
+ * own Google OAuth token. Returns the resumable session URL that will be used
+ * by the chunk-upload endpoint.
  */
 export async function POST(req: Request) {
   try {
@@ -36,7 +35,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Empty request body" }, { status: 400 });
     }
 
-    let parsed: { name?: string; mimeType?: string; parentFolderId?: string };
+    let parsed: { name?: string; mimeType?: string; parentFolderId?: string; fileSize?: number };
     try {
       parsed = JSON.parse(raw) as typeof parsed;
     } catch {
@@ -52,21 +51,18 @@ export async function POST(req: Request) {
     if (parentFolderId) metadata.parents = [parentFolderId];
 
     const mimeType = parsed.mimeType ?? "application/octet-stream";
-    const origin = req.headers.get("origin") ?? undefined;
 
-    const headers: Record<string, string> = {
-      authorization: `Bearer ${googleAccessToken}`,
-      "content-type": "application/json; charset=UTF-8",
-      "x-upload-content-type": mimeType,
-    };
-    if (origin) headers["origin"] = origin;
-
-    // Create resumable upload session using the user's own OAuth token
+    // Create resumable upload session
     const res = await fetch(
       "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id",
       {
         method: "POST",
-        headers,
+        headers: {
+          authorization: `Bearer ${googleAccessToken}`,
+          "content-type": "application/json; charset=UTF-8",
+          "x-upload-content-type": mimeType,
+          ...(parsed.fileSize ? { "x-upload-content-length": String(parsed.fileSize) } : {}),
+        },
         body: JSON.stringify(metadata),
       },
     );
@@ -86,16 +82,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const locationUrl = res.headers.get("location");
-    if (!locationUrl) {
+    const uploadUrl = res.headers.get("location");
+    if (!uploadUrl) {
       return NextResponse.json({ error: "Drive returned no upload URL" }, { status: 502 });
     }
 
-    // Return the upload URL and the access token separately.
-    // The browser will set the Authorization header on the PUT request.
-    // Google's resumable upload endpoint supports CORS when the OAuth client's
-    // "Authorized JavaScript origins" includes the requesting domain.
-    return NextResponse.json({ uploadUrl: locationUrl, token: googleAccessToken });
+    return NextResponse.json({ uploadUrl });
   } catch (e) {
     console.error("upload-start failed:", e);
     return NextResponse.json(

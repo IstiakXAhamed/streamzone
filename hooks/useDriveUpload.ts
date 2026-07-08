@@ -10,111 +10,119 @@ export interface DriveUploadResult {
   thumbnailLink: string | null;
 }
 
+// 3.5MB chunks — safely under Vercel's 4.5MB request body limit
+const CHUNK_SIZE = 3.5 * 1024 * 1024;
+
 /**
- * Pick a file → get a Drive resumable-upload URL from our server → PUT bytes
- * directly browser → Google Drive. Zero server bandwidth, no size limit.
- *
- * The upload URL includes an embedded access token so no Authorization header
- * is needed on the PUT — this avoids CORS preflight issues.
+ * Uploads a file to Google Drive via chunked resumable upload through our server.
+ * Flow: browser → /api/drive/upload-chunk → Google Drive
+ * Each chunk is under 4MB so it works on Vercel's serverless functions.
+ * Supports files of any size (50GB+).
  */
 export function useDriveUpload() {
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<XMLHttpRequest | null>(null);
+  const abortRef = useRef(false);
 
   const startUpload = useCallback(
     async (file: File, onProgress?: (pct: number) => void): Promise<DriveUploadResult> => {
       setBusy(true);
       setError(null);
       setProgress(0);
+      abortRef.current = false;
       onProgress?.(0);
 
-      // 1. Get the resumable upload URL from our server (tiny request).
-      const startRes = await fetch("/api/drive/upload-start", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: file.name, mimeType: file.type || undefined }),
-      });
-      const startText = await startRes.text();
-      let startJson: Record<string, unknown> = {};
-      try { startJson = JSON.parse(startText); } catch { /* empty body */ }
-      if (!startRes.ok) {
-        setBusy(false);
-        const msg = (startJson.error as string) ?? `upload-start failed: ${startRes.status}`;
-        setError(msg);
-        throw new Error(msg);
-      }
-      const uploadUrl = startJson.uploadUrl as string;
-      const accessToken = startJson.token as string;
+      try {
+        // 1. Create a resumable upload session via our server
+        const startRes = await fetch("/api/drive/upload-start", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: file.name,
+            mimeType: file.type || "application/octet-stream",
+            fileSize: file.size,
+          }),
+        });
 
-      // 2. PUT bytes directly to Google Drive (no size limit, no server proxy).
-      const result = await new Promise<DriveUploadResult>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        abortRef.current = xhr;
-        xhr.open("PUT", uploadUrl, true);
-        // Authorization header is required for the resumable PUT.
-        // Google's CORS policy allows this when your domain is in the OAuth
-        // client's "Authorized JavaScript origins".
-        xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
-        xhr.upload.onprogress = (e) => {
-          if (!e.lengthComputable) return;
-          const pct = Math.round((e.loaded / e.total) * 100);
+        if (!startRes.ok) {
+          const data = await startRes.json().catch(() => ({})) as { error?: string };
+          const msg = data.error ?? `Upload start failed: ${startRes.status}`;
+          setError(msg);
+          throw new Error(msg);
+        }
+
+        const { uploadUrl } = await startRes.json() as { uploadUrl: string };
+
+        // 2. Upload file in chunks through our server proxy
+        let offset = 0;
+        let fileId = "";
+        const totalSize = file.size;
+
+        while (offset < totalSize) {
+          if (abortRef.current) {
+            throw new Error("Upload cancelled");
+          }
+
+          const end = Math.min(offset + CHUNK_SIZE, totalSize) - 1;
+          const chunk = file.slice(offset, end + 1);
+
+          const params = new URLSearchParams({
+            uploadUrl,
+            start: String(offset),
+            end: String(end),
+            total: String(totalSize),
+          });
+
+          const chunkRes = await fetch(`/api/drive/upload-chunk?${params.toString()}`, {
+            method: "PUT",
+            credentials: "same-origin",
+            body: chunk,
+          });
+
+          if (!chunkRes.ok) {
+            const data = await chunkRes.json().catch(() => ({})) as { error?: string };
+            const msg = data.error ?? `Chunk upload failed: ${chunkRes.status}`;
+            setError(msg);
+            throw new Error(msg);
+          }
+
+          const result = await chunkRes.json() as { done: boolean; fileId?: string; range?: string };
+
+          if (result.done) {
+            fileId = result.fileId ?? "";
+          }
+
+          offset = end + 1;
+          const pct = Math.round((offset / totalSize) * 100);
           setProgress(pct);
           onProgress?.(pct);
-        };
-        xhr.onload = () => {
-          setBusy(false);
-          if (xhr.status >= 200 && xhr.status < 300) {
-            // Google returns { id: "...", ... } on successful upload completion
-            let fileId = "";
-            try {
-              const data = JSON.parse(xhr.responseText) as { id?: string };
-              fileId = data.id ?? "";
-            } catch { /* empty */ }
-            resolve({
-              id: fileId,
-              name: file.name,
-              size: file.size,
-              mimeType: file.type,
-              thumbnailLink: null,
-            });
-          } else {
-            let msg = `Upload failed: ${xhr.status}`;
-            try {
-              const errData = JSON.parse(xhr.responseText) as { error?: { message?: string } };
-              if (errData.error?.message) msg = errData.error.message;
-            } catch { /* use default */ }
-            setError(msg);
-            reject(new Error(msg));
-          }
-        };
-        xhr.onerror = () => {
-          setBusy(false);
-          const msg = "Upload network error — check your connection and try again";
-          setError(msg);
-          reject(new Error(msg));
-        };
-        xhr.onabort = () => {
-          setBusy(false);
-          const msg = "Upload cancelled";
-          setError(msg);
-          reject(new Error(msg));
-        };
-        xhr.send(file);
-      });
+        }
 
-      setProgress(100);
-      onProgress?.(100);
-      return result;
+        setProgress(100);
+        onProgress?.(100);
+        setBusy(false);
+
+        return {
+          id: fileId,
+          name: file.name,
+          size: file.size,
+          mimeType: file.type,
+          thumbnailLink: null,
+        };
+      } catch (e) {
+        setBusy(false);
+        const msg = (e as Error).message;
+        if (!error) setError(msg);
+        throw e;
+      }
     },
     [],
   );
 
   const cancel = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
+    abortRef.current = true;
     setBusy(false);
   }, []);
 
