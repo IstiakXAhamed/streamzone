@@ -79,11 +79,11 @@ export async function getDriveFileStreamUrl(
 ): Promise<string> {
   if (opts.readFromServiceAccount) {
     const token = await getAccessToken();
-    return `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&access_token=${token}`;
+    return `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true&access_token=${token}`;
   }
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY;
   if (!apiKey) throw new Error("NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY is missing");
-  return `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${apiKey}`;
+  return `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true&key=${apiKey}`;
 }
 
 /**
@@ -114,8 +114,10 @@ export async function createResumableUploadSession(input: {
     headers["origin"] = input.origin;
   }
 
+  // supportsAllDrives=true lets the service account write into folders that
+  // belong to a user's My Drive or a Shared Drive (the SA itself has no quota).
   const res = await fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id",
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id",
     {
       method: "POST",
       headers,
@@ -146,7 +148,7 @@ export async function finalizeUpload(
 ): Promise<{ id: string; name: string; size: number | null; mimeType: string; thumbnailLink: string | null }> {
   const token = await getAccessToken();
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,size,mimeType,thumbnailLink`,
+    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,size,mimeType,thumbnailLink&supportsAllDrives=true`,
     { headers: { authorization: `Bearer ${token}` } },
   );
   if (!res.ok) throw new Error(`Drive finalize failed: ${res.status} ${await res.text()}`);
