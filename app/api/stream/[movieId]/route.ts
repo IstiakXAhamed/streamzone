@@ -62,8 +62,10 @@ export async function GET(
   const driveRes = await fetch(driveUrl, { headers });
 
   if (!driveRes.ok && driveRes.status !== 206) {
+    const errBody = await driveRes.text().catch(() => "");
+    console.error("Stream proxy failed:", driveRes.status, errBody.slice(0, 500));
     return NextResponse.json(
-      { error: `Drive returned ${driveRes.status}` },
+      { error: `Drive returned ${driveRes.status}`, details: errBody.slice(0, 300) },
       { status: 502 },
     );
   }
