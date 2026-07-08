@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { createClient } from "@/lib/supabase/server";
 import { authOptions } from "@/lib/authOptions";
-import { getDriveFileStreamUrl } from "@/lib/googleDrive";
 import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -57,12 +56,25 @@ export async function GET(
     });
   } catch { /* ignore duplicates */ }
 
-  const driveUrl = await getDriveFileStreamUrl(episode.drive_file_id, {
-    readFromServiceAccount: true,
-  });
+  // Get fresh token and stream via Authorization header
+  let token: string;
+  try {
+    const { getStorageAccountToken, getAccessToken } = await import("@/lib/googleDrive");
+    try {
+      token = await getStorageAccountToken();
+    } catch {
+      token = await getAccessToken();
+    }
+  } catch (e) {
+    return NextResponse.json({ error: `Token error: ${(e as Error).message}` }, { status: 500 });
+  }
+
+  const driveUrl = `https://www.googleapis.com/drive/v3/files/${episode.drive_file_id}?alt=media&supportsAllDrives=true`;
 
   // Forward Range header for seeking support
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
   const rangeHeader = req.headers.get("range");
   if (rangeHeader) headers["Range"] = rangeHeader;
 

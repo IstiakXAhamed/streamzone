@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { createClient } from "@/lib/supabase/server";
 import { authOptions } from "@/lib/authOptions";
-import { getDriveFileStreamUrl } from "@/lib/googleDrive";
 import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -47,13 +46,25 @@ export async function GET(
     return NextResponse.json({ error: "Movie not found" }, { status: 404 });
   }
 
-  // Build the Drive download URL with auth token
-  const driveUrl = await getDriveFileStreamUrl(movie.drive_file_id, {
-    readFromServiceAccount: true,
-  });
+  // Build the Drive download URL and get a fresh token
+  let token: string;
+  try {
+    const { getStorageAccountToken, getAccessToken } = await import("@/lib/googleDrive");
+    try {
+      token = await getStorageAccountToken();
+    } catch {
+      token = await getAccessToken();
+    }
+  } catch (e) {
+    return NextResponse.json({ error: `Token error: ${(e as Error).message}` }, { status: 500 });
+  }
 
-  // Forward the browser's Range header to Google
-  const headers: Record<string, string> = {};
+  const driveUrl = `https://www.googleapis.com/drive/v3/files/${movie.drive_file_id}?alt=media&supportsAllDrives=true`;
+
+  // Forward the browser's Range header to Google, auth via header (not query param)
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
   const rangeHeader = req.headers.get("range");
   if (rangeHeader) {
     headers["Range"] = rangeHeader;
