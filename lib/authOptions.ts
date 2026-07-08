@@ -91,6 +91,14 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      authorization: {
+        params: {
+          // Request Drive file-level access so admins can upload directly to their own Drive.
+          scope: "openid email profile https://www.googleapis.com/auth/drive.file",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
     }),
     CredentialsProvider({
       name: "Email & password",
@@ -131,7 +139,13 @@ export const authOptions: NextAuthOptions = {
 
       return status !== "pending" && status !== "suspended";
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
+      // Persist Google OAuth tokens on initial sign-in
+      if (account?.provider === "google") {
+        token.googleAccessToken = account.access_token;
+        token.googleRefreshToken = account.refresh_token;
+        token.googleTokenExpires = account.expires_at ? account.expires_at * 1000 : 0;
+      }
       if (user?.email) {
         const { role, status } = await resolveUserRole(user.email);
         token.role = role;
@@ -143,6 +157,30 @@ export const authOptions: NextAuthOptions = {
           .maybeSingle();
         token.uid = data?.id ?? null;
       }
+      // Refresh Google access token if expired
+      if (token.googleRefreshToken && token.googleTokenExpires && Date.now() > (token.googleTokenExpires as number)) {
+        try {
+          const res = await fetch("https://oauth2.googleapis.com/token", {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              client_id: process.env.GOOGLE_CLIENT_ID ?? "",
+              client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+              grant_type: "refresh_token",
+              refresh_token: token.googleRefreshToken as string,
+            }),
+          });
+          const data = await res.json() as { access_token?: string; expires_in?: number };
+          if (data.access_token) {
+            token.googleAccessToken = data.access_token;
+            token.googleTokenExpires = Date.now() + (data.expires_in ?? 3600) * 1000;
+          }
+        } catch {
+          // If refresh fails, clear the tokens — user will need to re-auth
+          token.googleAccessToken = undefined;
+          token.googleTokenExpires = 0;
+        }
+      }
       return token;
     },
     async session({ session, token }) {
@@ -151,6 +189,8 @@ export const authOptions: NextAuthOptions = {
         session.user.status = (token.status as UserStatus) ?? "pending";
         session.user.id = (token.uid as string) ?? "";
       }
+      // Expose Google access token for Drive uploads (server-side only via getServerSession)
+      (session as any).googleAccessToken = token.googleAccessToken ?? null;
       return session;
     },
   },
