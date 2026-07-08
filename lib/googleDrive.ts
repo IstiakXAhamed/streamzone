@@ -116,16 +116,24 @@ export async function getAccessToken(): Promise<string> {
 
 /**
  * Build a direct stream URL.
- *  - `readFromServiceAccount` — signed, idempotent. Works even when the file
- *    is not public (we recommend staying "anyone with link" for simplicity and
- *    to keep our host out of the byte path).
+ *  - `readFromServiceAccount` — reads using the STORAGE account's token (the
+ *    account that owns the uploaded files). The old service account has no
+ *    access to files owned by the storage account, so we authenticate as the
+ *    storage account here. Falls back to the service account if the storage
+ *    refresh token isn't configured.
  */
 export async function getDriveFileStreamUrl(
   fileId: string,
   opts: { readFromServiceAccount?: boolean } = {},
 ): Promise<string> {
   if (opts.readFromServiceAccount) {
-    const token = await getAccessToken();
+    // Prefer the storage account (owns the files); fall back to service account.
+    let token: string;
+    try {
+      token = await getStorageAccountToken();
+    } catch {
+      token = await getAccessToken();
+    }
     return `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true&access_token=${token}`;
   }
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY;

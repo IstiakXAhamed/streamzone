@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Film, Tv, Users, BarChart3, Radio, Settings, Shield, type LucideIcon,
+  LayoutDashboard, Film, Tv, Users, BarChart3, Radio, Settings, Shield, Home, type LucideIcon,
 } from "lucide-react";
 
 interface NavItem { href: string; label: string; Icon: LucideIcon; badge?: number; superOnly?: boolean; }
@@ -56,6 +56,16 @@ export function AdminSidebar({ pendingCount, role }: { pendingCount: number; rol
           );
         })}
       </nav>
+
+      <div className="border-t border-[color:var(--color-border-subtle)] px-2 py-2">
+        <Link
+          href="/"
+          className="flex h-10 items-center gap-2 rounded-lg px-3 text-sm text-[color:var(--color-text-secondary)] hover:bg-[color:var(--color-surface-2)] hover:text-white"
+        >
+          <Home size={16} />
+          Back to site
+        </Link>
+      </div>
 
       <div className="border-t border-[color:var(--color-border-subtle)] px-4 py-3 text-xs text-[color:var(--color-text-tertiary)]">
         Role: <span className="font-semibold uppercase text-[color:var(--color-text-primary)]">{role}</span>
