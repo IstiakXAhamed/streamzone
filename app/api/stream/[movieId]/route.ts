@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { createClient } from "@/lib/supabase/server";
 import { authOptions } from "@/lib/authOptions";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -26,8 +26,7 @@ export async function GET(
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const supabase = await createClient();
-  const { data: urow } = await supabase
+  const { data: urow } = await supabaseAdmin
     .from("users")
     .select("id,status")
     .ilike("email", session.user.email)
@@ -36,7 +35,7 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: movie } = await supabase
+  const { data: movie } = await supabaseAdmin
     .from("movies")
     .select("id,drive_file_id,is_public,title")
     .eq("id", movieId)

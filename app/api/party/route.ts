@@ -1,23 +1,34 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/authOptions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 /** POST /api/party — { movieId } → creates a watch-party room. Returns the new room id. */
 export async function POST(req: Request) {
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { data: urow } = await supabase.from("users").select("status").eq("id", data.user.id).single();
-  if (!urow || urow.status !== "approved") return NextResponse.json({ error: "Account not approved" }, { status: 403 });
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Look up the user in our DB
+  const { data: urow } = await supabaseAdmin
+    .from("users")
+    .select("id,status")
+    .ilike("email", session.user.email.toLowerCase())
+    .maybeSingle();
+
+  if (!urow || urow.status !== "approved") {
+    return NextResponse.json({ error: "Account not approved" }, { status: 403 });
+  }
 
   const { movieId } = (await req.json()) as { movieId?: string };
   if (!movieId) return NextResponse.json({ error: "movieId required" }, { status: 400 });
 
-  // upsert a single host===user room for that movie
+  // Check if user already has a room for this movie
   const found = await supabaseAdmin
     .from("watch_party_rooms")
     .select("id")
-    .eq("host_user_id", data.user.id)
+    .eq("host_user_id", urow.id)
     .eq("movie_id", movieId)
     .maybeSingle();
 
@@ -25,7 +36,7 @@ export async function POST(req: Request) {
 
   const { data: row, error: err } = await supabaseAdmin
     .from("watch_party_rooms")
-    .insert({ host_user_id: data.user.id, movie_id: movieId, is_private: false })
+    .insert({ host_user_id: urow.id, movie_id: movieId, is_private: false })
     .select("id")
     .single();
   if (err) return NextResponse.json({ error: err.message }, { status: 500 });
@@ -35,9 +46,18 @@ export async function POST(req: Request) {
 
 /** GET /api/party?mine=true → current user's active party rooms. */
 export async function GET(req: Request) {
-  const sb = await createClient();
-  const { data, error } = await sb.auth.getUser();
-  if (error || !data.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { data: urow } = await supabaseAdmin
+    .from("users")
+    .select("id")
+    .ilike("email", session.user.email.toLowerCase())
+    .maybeSingle();
+
+  if (!urow) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const url = new URL(req.url);
   const mine = url.searchParams.get("mine") === "true";
@@ -47,7 +67,7 @@ export async function GET(req: Request) {
     .select("id,host_user_id,movie_id,created_at")
     .order("created_at", { ascending: false })
     .limit(30);
-  if (mine) query = query.eq("host_user_id", data.user.id);
+  if (mine) query = query.eq("host_user_id", urow.id);
 
   const { data: rows } = await query;
   return NextResponse.json({ rooms: rows ?? [] });
