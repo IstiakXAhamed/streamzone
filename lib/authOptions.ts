@@ -93,8 +93,10 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
       authorization: {
         params: {
-          // Request Drive file-level access so admins can upload directly to their own Drive.
-          scope: "openid email profile https://www.googleapis.com/auth/drive.file",
+          // Full Drive access so admins can upload into their existing movie
+          // folder (drive.file only allows writing to app-created files, which
+          // fails when committing into a pre-existing folder).
+          scope: "openid email profile https://www.googleapis.com/auth/drive",
           access_type: "offline",
           prompt: "consent",
         },
