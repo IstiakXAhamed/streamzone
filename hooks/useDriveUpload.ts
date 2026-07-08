@@ -47,14 +47,17 @@ export function useDriveUpload() {
         throw new Error(msg);
       }
       const uploadUrl = startJson.uploadUrl as string;
+      const accessToken = startJson.token as string;
 
       // 2. PUT bytes directly to Google Drive (no size limit, no server proxy).
       const result = await new Promise<DriveUploadResult>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         abortRef.current = xhr;
         xhr.open("PUT", uploadUrl, true);
-        // Content-Type must match what was declared in x-upload-content-type
-        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+        // Authorization header is required for the resumable PUT.
+        // Google's CORS policy allows this when your domain is in the OAuth
+        // client's "Authorized JavaScript origins".
+        xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
         xhr.upload.onprogress = (e) => {
           if (!e.lengthComputable) return;
           const pct = Math.round((e.loaded / e.total) * 100);

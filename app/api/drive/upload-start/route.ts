@@ -91,12 +91,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Drive returned no upload URL" }, { status: 502 });
     }
 
-    // Embed the user's access token in the URL so the browser can PUT directly
-    // to Google without CORS issues (no Authorization header = simple request).
-    const separator = locationUrl.includes("?") ? "&" : "?";
-    const uploadUrl = `${locationUrl}${separator}access_token=${encodeURIComponent(googleAccessToken)}`;
-
-    return NextResponse.json({ uploadUrl });
+    // Return the upload URL and the access token separately.
+    // The browser will set the Authorization header on the PUT request.
+    // Google's resumable upload endpoint supports CORS when the OAuth client's
+    // "Authorized JavaScript origins" includes the requesting domain.
+    return NextResponse.json({ uploadUrl: locationUrl, token: googleAccessToken });
   } catch (e) {
     console.error("upload-start failed:", e);
     return NextResponse.json(
