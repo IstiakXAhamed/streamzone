@@ -1,4 +1,5 @@
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/authOptions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import { PartyRoomClient } from "./_components/PartyRoomClient";
@@ -8,7 +9,6 @@ export const dynamic = "force-dynamic";
 export default async function PartyRoomPage({ params }: { params: Promise<{ roomId: string }> }) {
   const { roomId } = await params;
 
-  const sb = await createServerClient();
   const room = await supabaseAdmin
     .from("watch_party_rooms")
     .select("id,host_user_id,movie_id,created_at")
@@ -22,11 +22,23 @@ export default async function PartyRoomPage({ params }: { params: Promise<{ room
     .eq("id", room.data.movie_id)
     .maybeSingle();
 
-  const { data: authUser } = await sb.auth.getUser();
-  let participant: { name?: string | null; status?: string | null } | null = null;
-  if (authUser.user) {
-    const { data } = await sb.from("users").select("id,name,role,status").eq("id", authUser.user.id).maybeSingle();
-    participant = data ? { name: data.name, status: data.status } : null;
+  // Use NextAuth session (not Supabase Auth)
+  const session = await getServerSession(authOptions);
+  let identityId: string | null = null;
+  let identityName = "guest";
+  let identityStatus: string | null = null;
+
+  if (session?.user?.email) {
+    const { data: urow } = await supabaseAdmin
+      .from("users")
+      .select("id,name,status")
+      .ilike("email", session.user.email.toLowerCase())
+      .maybeSingle();
+    if (urow) {
+      identityId = urow.id;
+      identityName = urow.name ?? session.user.name ?? session.user.email;
+      identityStatus = urow.status;
+    }
   }
 
   return (
@@ -35,9 +47,9 @@ export default async function PartyRoomPage({ params }: { params: Promise<{ room
       movieId={room.data.movie_id}
       initialMovieTitle={movie.data?.title ?? "Party"}
       hostUserId={room.data.host_user_id}
-      identityId={authUser.user?.id ?? null}
-      identityName={participant?.name ?? authUser.user?.email ?? "guest"}
-      identityStatus={participant?.status ?? null}
+      identityId={identityId}
+      identityName={identityName}
+      identityStatus={identityStatus}
     />
   );
 }
