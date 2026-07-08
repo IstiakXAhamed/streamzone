@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     rating: input.rating ?? null,
     featured: input.featured ?? false,
     is_public: input.isPublic ?? true,
-    created_by: user.id,
+    created_by: user.id || null,
   };
 
   const { data, error: upsertErr } = await supabaseAdmin
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
   if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 500 });
 
   await supabaseAdmin.from("admin_activity_log").insert({
-    admin_user_id: user.id,
+    admin_user_id: user.id || null,
     action: "ingest_movie",
     target_id: data.id,
     metadata: { slug },
