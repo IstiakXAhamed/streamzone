@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Account not approved" }, { status: 403 });
   }
 
-  const { movieId } = (await req.json()) as { movieId?: string };
+  const { movieId, friendsOnly } = (await req.json()) as { movieId?: string; friendsOnly?: boolean };
   if (!movieId) return NextResponse.json({ error: "movieId required" }, { status: 400 });
 
   // Check if user already has a room for this movie
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
   const { data: row, error: err } = await supabaseAdmin
     .from("watch_party_rooms")
-    .insert({ host_user_id: urow.id, movie_id: movieId, is_private: false })
+    .insert({ host_user_id: urow.id, movie_id: movieId, is_private: false, friends_only: friendsOnly ?? false })
     .select("id")
     .single();
   if (err) return NextResponse.json({ error: err.message }, { status: 500 });

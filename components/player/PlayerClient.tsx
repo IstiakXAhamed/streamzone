@@ -1,10 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { usePlyr, type PlyrInstance, type PlyrSource } from "plyr-react";
-import type { APITypes } from "plyr-react";
-import "@/styles/plyr.local.css";
-import { PlayerControls } from "./PlayerControls";
+import { useEffect, useRef, useCallback } from "react";
 
 interface Props {
   src: string;
@@ -14,62 +10,79 @@ interface Props {
   subtitleLabel?: string;
   movieId: string;
   movie: { slug: string; id: string } | null;
+  /** If true, this user controls playback. If false, controls are disabled (guest in party). */
+  isHost?: boolean;
+  /** Called when the host performs play/pause/seek so it can be broadcast to guests. */
+  onControl?: (action: "play" | "pause" | "seek", time?: number) => void;
+  /** Incoming sync command from the host (for guests). */
+  syncCommand?: { action?: string; t?: number } | null;
 }
 
-export function PlayerClient({ src, title, poster, subtitleSrc, subtitleLabel, movieId }: Props) {
+export function PlayerClient({ src, title, poster, movieId, isHost = true, onControl, syncCommand }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [instance, setInstance] = useState<PlyrInstance | undefined>();
+  const ignoreEvents = useRef(false); // prevents echo when applying sync commands
 
-  const plyrSource: PlyrSource = {
-    type: "video",
-    title,
-    sources: [{ src, type: "video/mp4", size: 720 }],
-    ...(subtitleSrc
-      ? { tracks: [{ kind: "captions", label: subtitleLabel ?? "English", srcLang: "en", src: subtitleSrc, default: false }] }
-      : {}),
-  };
+  // Host: broadcast control events when user interacts with the player
+  const handlePlay = useCallback(() => {
+    if (!ignoreEvents.current && isHost && onControl) {
+      onControl("play", videoRef.current?.currentTime);
+    }
+  }, [isHost, onControl]);
 
-  usePlyr(videoRef as React.Ref<APITypes>, { source: plyrSource, options: {} }, [src]);
+  const handlePause = useCallback(() => {
+    if (!ignoreEvents.current && isHost && onControl) {
+      onControl("pause", videoRef.current?.currentTime);
+    }
+  }, [isHost, onControl]);
 
+  const handleSeeked = useCallback(() => {
+    if (!ignoreEvents.current && isHost && onControl && videoRef.current) {
+      onControl("seek", videoRef.current.currentTime);
+    }
+  }, [isHost, onControl]);
+
+  // Guest: apply incoming sync commands from the host
   useEffect(() => {
-    const attach = () => {
-      const api = (videoRef.current as unknown as { plyr?: PlyrInstance } | null)?.plyr;
-      if (api) setInstance(api);
-    };
-    attach();
-    const id = window.setInterval(() => attach(), 500);
-    return () => window.clearInterval(id);
-  }, [src]);
+    if (isHost || !syncCommand || !videoRef.current) return;
+    const video = videoRef.current;
+    ignoreEvents.current = true;
 
-  const [showControls, setShowControls] = useState(true);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const toggleControls = useCallback(() => {
-    setShowControls((s) => {
-      const next = !s;
-      if (next) {
-        if (hideTimer.current) clearTimeout(hideTimer.current);
-        hideTimer.current = setTimeout(() => setShowControls(false), 3200);
+    if (syncCommand.action === "seek" && syncCommand.t != null) {
+      video.currentTime = syncCommand.t;
+    }
+    if (syncCommand.action === "play") {
+      if (syncCommand.t != null) video.currentTime = syncCommand.t;
+      video.play().catch(() => {});
+    }
+    if (syncCommand.action === "pause") {
+      if (syncCommand.t != null) video.currentTime = syncCommand.t;
+      video.pause();
+    }
+
+    // Re-enable event broadcasting after a short delay
+    setTimeout(() => { ignoreEvents.current = false; }, 300);
+  }, [isHost, syncCommand]);
+
+  // Periodic time sync: host broadcasts current time every 5s so late-joiners catch up
+  useEffect(() => {
+    if (!isHost || !onControl) return;
+    const id = setInterval(() => {
+      const video = videoRef.current;
+      if (video && !video.paused) {
+        onControl("play", video.currentTime);
       }
-      return next;
-    });
-  }, []);
+    }, 5000);
+    return () => clearInterval(id);
+  }, [isHost, onControl]);
 
-  // continue-watching: resume position; report progress periodically
+  // Continue-watching history (only for solo watching, skip in party as guest)
   useEffect(() => {
-    let disposed = false;
-    const resume = async () => {
-      try {
-        const r = await fetch(`/api/me/history/${movieId}`);
-        const body = (await r.json().catch(() => ({}))) as { position?: number };
-        if (!disposed && body.position && instance) instance.forward(body.position);
-      } catch { /* no history yet */ }
-    };
-    if (instance) resume();
-
-    const id = window.setInterval(async () => {
-      if (!instance) return;
-      const pos = Math.floor(instance.currentTime ?? 0);
-      if (pos > 0 && pos % 15 === 0) {
+    if (!isHost) return;
+    const id = setInterval(async () => {
+      const video = videoRef.current;
+      if (!video) return;
+      const pos = Math.floor(video.currentTime);
+      if (pos > 0) {
         await fetch("/api/me/history", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -77,25 +90,31 @@ export function PlayerClient({ src, title, poster, subtitleSrc, subtitleLabel, m
         }).catch(() => undefined);
       }
     }, 15_000);
-    return () => {
-      disposed = true;
-      window.clearInterval(id);
-    };
-  }, [instance, movieId]);
+    return () => clearInterval(id);
+  }, [isHost, movieId]);
 
   if (!src) return <p className="p-6 text-sm text-[color:var(--color-brand)]">Unable to load stream.</p>;
 
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
-      {/* Use native video element — Plyr has compatibility issues with React 19 / Next.js 16 */}
       <video
         ref={videoRef}
         src={src}
         poster={poster ?? undefined}
         playsInline
-        controls
+        controls={isHost} // Only host sees native controls
+        onPlay={handlePlay}
+        onPause={handlePause}
+        onSeeked={handleSeeked}
         className="h-full w-full object-contain"
       />
+      {!isHost && (
+        <div className="absolute inset-0 z-10 flex items-end justify-center pb-4">
+          <span className="rounded-full bg-black/70 px-3 py-1 text-xs text-[color:var(--color-text-secondary)]">
+            Host controls playback
+          </span>
+        </div>
+      )}
     </div>
   );
 }

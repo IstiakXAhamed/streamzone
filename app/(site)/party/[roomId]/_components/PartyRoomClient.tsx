@@ -23,6 +23,7 @@ export function PartyRoomClient({
   const [participants, setParticipants] = useState<PresenceUser[]>([]);
   const [chat, setChat] = useState<RoomChatItem[]>([]);
   const [lastVoiceMessage, setLastVoiceMessage] = useState<PartyMessage | null>(null);
+  const [syncCommand, setSyncCommand] = useState<PartyMessage | null>(null);
 
   const partyRef = useRef<PartyHandle | null>(null);
   const sendRef = useRef<((msg: Omit<PartyMessage, "at">) => PartyMessage) | null>(null);
@@ -42,6 +43,10 @@ export function PartyRoomClient({
     const offMsg = party.onMessage((msg: PartyMessage) => {
       if (msg.kind === "chat" && msg.by !== identityId) {
         setChat((c) => [...c, { by: msg.by, name: msg.name ?? msg.by, text: msg.text ?? "", at: msg.at }]);
+      }
+      if (msg.kind === "control" && msg.by !== identityId) {
+        // Apply host's control commands to our player
+        setSyncCommand(msg);
       }
       if (msg.kind === "voice-sdp" || msg.kind === "voice-ice") {
         setLastVoiceMessage(msg);
@@ -72,6 +77,17 @@ export function PartyRoomClient({
     partyRef.current?.send({ kind: "chat", text, by: identityId, name: identityName } as Omit<PartyMessage, "at">);
     setChat((c) => [...c, { by: identityId, name: identityName, text, at: Date.now() }]);
   }, [identityId, identityName]);
+
+  // Host broadcasts control commands so guests sync
+  const handleControl = useCallback((action: "play" | "pause" | "seek", time?: number) => {
+    if (!isHost || !identityId) return;
+    partyRef.current?.send({
+      kind: "control",
+      action,
+      t: time,
+      by: identityId,
+    } as Omit<PartyMessage, "at">);
+  }, [isHost, identityId]);
 
   function copyLink() {
     navigator.clipboard.writeText(window.location.href).catch(() => undefined);
@@ -104,6 +120,9 @@ export function PartyRoomClient({
             isLoading={isLoading}
             movieId={movieId}
             movie={{ slug: "party", id: movieId }}
+            isHost={isHost}
+            onControl={handleControl}
+            syncCommand={syncCommand}
           />
           <VoiceStrip roomId={roomId} identityId={identityId} participants={participants} send={handleSend} onMessage={lastVoiceMessage ?? ({ kind: "chat", by: "", text: "", at: 0 })} />
         </div>
@@ -128,7 +147,7 @@ export function PartyRoomClient({
 }
 
 function PlayerBlock({
-  title, stream, streamError, isLoading, movieId, movie,
+  title, stream, streamError, isLoading, movieId, movie, isHost, onControl, syncCommand,
 }: {
   title: string;
   stream: { url: string; id: string; title: string } | undefined;
@@ -136,10 +155,13 @@ function PlayerBlock({
   isLoading: boolean;
   movieId: string;
   movie: { slug: string; id: string };
+  isHost: boolean;
+  onControl?: (action: "play" | "pause" | "seek", time?: number) => void;
+  syncCommand?: { action?: string; t?: number } | null;
 }) {
   if (isLoading) return <div className="grid aspect-video place-items-center rounded-xl bg-[color:var(--color-surface-2)]"><p className="text-sm">Preparing stream…</p></div>;
   if (streamError || !stream) return <div className="grid aspect-video place-items-center rounded-xl bg-[color:var(--color-surface-2)]"><p className="text-sm text-[color:var(--color-brand)]">{streamError ?? "Could not load"}</p></div>;
-  return <PlayerClient src={stream.url} title={title} poster={null} movieId={movieId} movie={movie} />;
+  return <PlayerClient src={stream.url} title={title} poster={null} movieId={movieId} movie={movie} isHost={isHost} onControl={onControl} syncCommand={syncCommand} />;
 }
 
 function Gate({ label, to }: { label: string; to?: string }) {
