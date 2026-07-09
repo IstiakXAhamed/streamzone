@@ -10,6 +10,7 @@ const navLinks = [
   { href: "/category/action", label: "Action" },
   { href: "/category/comedy", label: "Comedy" },
   { href: "/category/horror", label: "Horror" },
+  { href: "/friends", label: "Friends" },
   { href: "/party/create", label: "Party" },
 ];
 

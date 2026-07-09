@@ -65,6 +65,10 @@ export function useVoice(params: {
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
         src.connect(analyser);
+        // Play the remote audio
+        const audio = new Audio();
+        audio.srcObject = stream;
+        audio.play().catch(() => {});
         getAnalysers().set(peerId, { analyser, stream });
       } catch {
         getAnalysers().set(peerId, { analyser: null, stream });
@@ -97,7 +101,7 @@ export function useVoice(params: {
     })();
   }, [params.enabled, params.micOn, params.participants, params.selfId, ensureMic, spawnPeer]);
 
-  /** Handle incoming SDP/ICE packets */
+  /** Handle incoming SDP/ICE packets — accept even if mic is off (so we can hear others) */
   useEffect(() => {
     if (!params.enabled) return;
     const m = params.onMessage;
@@ -110,7 +114,8 @@ export function useVoice(params: {
       if (existing) {
         existing.signal(m.sdp as PeerSignal);
       } else {
-        const peer = new Peer({ initiator: false, stream: micStream.current, config: { iceServers: ICE_SERVERS } });
+        // Accept the offer even without our mic — we'll hear the other person
+        const peer = new Peer({ initiator: false, stream: micStream.current || undefined, config: { iceServers: ICE_SERVERS } });
         peer.on("signal", (signal: PeerSignal) => {
           params.send({ kind: "voice-sdp", target: m.by, sdp: signal, by: params.selfId } as Omit<PartyMessage, "at">);
         });
@@ -122,6 +127,10 @@ export function useVoice(params: {
             const analyser = ctx.createAnalyser();
             analyser.fftSize = 256;
             src.connect(analyser);
+            // Also play the audio so we can hear them
+            const audio = new Audio();
+            audio.srcObject = stream;
+            audio.play().catch(() => {});
             getAnalysers().set(m.by, { analyser, stream });
           } catch {
             getAnalysers().set(m.by, { analyser: null, stream });

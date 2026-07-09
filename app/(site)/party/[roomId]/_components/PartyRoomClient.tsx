@@ -5,8 +5,8 @@ import { PlayerClient } from "@/components/player/PlayerClient";
 import { useStreamUrl } from "@/hooks/useStreamUrl";
 import { joinPartyChannel, type PartyHandle, type PartyMessage, type PresenceUser } from "@/lib/partyChannel";
 import { ChatPanel } from "./ChatPanel";
-import { VoiceStrip } from "./VoiceStrip";
-import { Copy } from "lucide-react";
+import { LiveVoice } from "@/components/party/LiveVoice";
+import { Copy, UserPlus } from "lucide-react";
 
 export function PartyRoomClient({
   roomId, movieId, initialMovieTitle, hostUserId,
@@ -109,6 +109,9 @@ export function PartyRoomClient({
         <button onClick={copyLink} className="ml-auto grid h-8 w-8 place-items-center rounded-full bg-[color:var(--color-surface-3)]" title="Copy invite link">
           <Copy size={14} />
         </button>
+        {isHost && (
+          <InviteFriendsButton roomId={roomId} />
+        )}
       </header>
 
       <div className="grid flex-1 grid-cols-1 gap-3 p-3 lg:grid-cols-[1fr_320px] lg:p-5">
@@ -124,7 +127,7 @@ export function PartyRoomClient({
             onControl={handleControl}
             syncCommand={syncCommand}
           />
-          <VoiceStrip roomId={roomId} identityId={identityId} participants={participants} send={handleSend} onMessage={lastVoiceMessage ?? ({ kind: "chat", by: "", text: "", at: 0 })} />
+          <LiveVoice roomId={roomId} />
         </div>
         <aside className="flex flex-col gap-3">
           <section className="rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-1)] p-3">
@@ -176,6 +179,71 @@ function Gate({ label, to }: { label: string; to?: string }) {
         )}
       </div>
     </div>
+  );
+}
+
+function InviteFriendsButton({ roomId }: { roomId: string }) {
+  const [open, setOpen] = useState(false);
+  const [friends, setFriends] = useState<{ id: string; user: { id: string; name: string | null; email: string } }[]>([]);
+  const [inviting, setInviting] = useState<string | null>(null);
+  const [invited, setInvited] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/friends").then(r => r.json()).then(data => {
+      setFriends(data.friends ?? []);
+    }).catch(() => {});
+  }, [open]);
+
+  async function invite(friendUserId: string) {
+    setInviting(friendUserId);
+    const res = await fetch("/api/party/invite", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomId, friendUserId }),
+    });
+    if (res.ok) {
+      setInvited(prev => new Set([...prev, friendUserId]));
+    }
+    setInviting(null);
+  }
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="grid h-8 w-8 place-items-center rounded-full bg-[color:var(--color-surface-3)]" title="Invite friends">
+        <UserPlus size={14} />
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setOpen(false)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-1)] p-5">
+            <h3 className="mb-3 text-lg font-bold">Invite friends to party</h3>
+            {friends.length === 0 ? (
+              <p className="text-sm text-[color:var(--color-text-tertiary)]">No friends yet. Add friends from the Friends page first.</p>
+            ) : (
+              <ul className="max-h-60 space-y-2 overflow-y-auto">
+                {friends.map(f => (
+                  <li key={f.id} className="flex items-center justify-between rounded-lg bg-[color:var(--color-surface-2)] px-3 py-2">
+                    <span className="text-sm">{f.user?.name ?? f.user?.email}</span>
+                    {invited.has(f.user?.id) ? (
+                      <span className="text-xs text-emerald-400">Invited ✓</span>
+                    ) : (
+                      <button
+                        onClick={() => invite(f.user?.id)}
+                        disabled={inviting === f.user?.id}
+                        className="rounded-full bg-[color:var(--color-brand)] px-2 py-0.5 text-xs text-white disabled:opacity-50"
+                      >
+                        {inviting === f.user?.id ? "..." : "Invite"}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button onClick={() => setOpen(false)} className="mt-3 w-full rounded-full bg-[color:var(--color-surface-3)] py-2 text-sm">Close</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
