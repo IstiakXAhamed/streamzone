@@ -4,9 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PlayerClient } from "@/components/player/PlayerClient";
 import { useStreamUrl } from "@/hooks/useStreamUrl";
 import { joinPartyChannel, type PartyHandle, type PartyMessage, type PresenceUser } from "@/lib/partyChannel";
-import { ChatPanel } from "./ChatPanel";
+import { ChatPanel, type ChatMessage } from "./ChatPanel";
+import { ParticipantStrip } from "./ParticipantStrip";
 import { LiveVoice } from "@/components/party/LiveVoice";
-import { Copy, UserPlus } from "lucide-react";
+import { Copy, MessageCircle, UserPlus } from "lucide-react";
+import { Sheet } from "@/components/ui/Sheet";
+import { useToast } from "@/components/ui/Toast";
 
 export function PartyRoomClient({
   roomId, movieId, initialMovieTitle, hostUserId,
@@ -18,12 +21,14 @@ export function PartyRoomClient({
 }) {
   const isHost = identityId === hostUserId;
   const { data: stream, error: streamError, isLoading } = useStreamUrl(movieId);
-  type RoomChatItem = { by: string; name: string; text: string; at: number };
+  const { push } = useToast();
 
   const [participants, setParticipants] = useState<PresenceUser[]>([]);
-  const [chat, setChat] = useState<RoomChatItem[]>([]);
+  const [chat, setChat] = useState<ChatMessage[]>([]);
   const [lastVoiceMessage, setLastVoiceMessage] = useState<PartyMessage | null>(null);
   const [syncCommand, setSyncCommand] = useState<PartyMessage | null>(null);
+  const [confirmedControl, setConfirmedControl] = useState<string | null>(null);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
   const partyRef = useRef<PartyHandle | null>(null);
   const sendRef = useRef<((msg: Omit<PartyMessage, "at">) => PartyMessage) | null>(null);
@@ -47,6 +52,9 @@ export function PartyRoomClient({
       if (msg.kind === "control" && msg.by !== identityId) {
         // Apply host's control commands to our player
         setSyncCommand(msg);
+        if (!isHost && msg.action) {
+          push({ kind: "info", message: `Host ${msg.action === "play" ? "resumed" : msg.action === "pause" ? "paused" : "seeked"} playback` });
+        }
       }
       if (msg.kind === "voice-sdp" || msg.kind === "voice-ice") {
         setLastVoiceMessage(msg);
@@ -70,7 +78,7 @@ export function PartyRoomClient({
       }
       setParticipants(list);
     }
-  }, [identityId, identityStatus, roomId, identityName]);
+  }, [identityId, identityStatus, roomId, identityName, isHost, push]);
 
   const handleChat = useCallback((text: string) => {
     if (!identityId) return;
@@ -87,16 +95,20 @@ export function PartyRoomClient({
       t: time,
       by: identityId,
     } as Omit<PartyMessage, "at">);
+    setConfirmedControl(action);
+    setTimeout(() => setConfirmedControl(null), 2000);
   }, [isHost, identityId]);
 
   function copyLink() {
     navigator.clipboard.writeText(window.location.href).catch(() => undefined);
-    alert("Party link copied — share it with friends!");
+    push({ kind: "success", message: "Party link copied — share it with friends!" });
   }
 
   if (identityStatus === "pending") return <Gate label="Awaiting approval" />;
   if (identityStatus === "suspended") return <Gate label="Suspended" />;
   if (!identityId) return <Gate label="Sign in to join" to="/login" />;
+
+  const participantList = participants.map((p) => ({ id: p.userId, name: p.name ?? p.userId, isHost: p.userId === hostUserId }));
 
   return (
     <main className="mx-auto flex min-h-screen flex-col bg-black text-white">
@@ -106,12 +118,22 @@ export function PartyRoomClient({
         <span className="rounded-full bg-[color:var(--color-brand)]/20 px-2 py-0.5 text-xs text-[color:var(--color-brand)]">
           {isHost ? "Host" : "Guest"}
         </span>
+        {confirmedControl ? (
+          <span className="rounded-full bg-[color:var(--color-success)]/20 px-2 py-0.5 text-xs text-[color:var(--color-success)]">
+            Broadcast: {confirmedControl}
+          </span>
+        ) : null}
         <button onClick={copyLink} className="ml-auto grid h-8 w-8 place-items-center rounded-full bg-[color:var(--color-surface-3)]" title="Copy invite link">
-          <Copy size={14} />
+          <Copy aria-hidden="true" size={14} />
         </button>
-        {isHost && (
-          <InviteFriendsButton roomId={roomId} />
-        )}
+        {isHost && <InviteFriendsButton roomId={roomId} />}
+        <button
+          onClick={() => setMobileChatOpen(true)}
+          aria-label="Open chat"
+          className="grid h-8 w-8 place-items-center rounded-full bg-[color:var(--color-surface-3)] lg:hidden"
+        >
+          <MessageCircle aria-hidden="true" size={14} />
+        </button>
       </header>
 
       <div className="grid flex-1 grid-cols-1 gap-3 p-3 lg:grid-cols-[1fr_320px] lg:p-5">
@@ -128,23 +150,19 @@ export function PartyRoomClient({
             syncCommand={syncCommand}
           />
           <LiveVoice roomId={roomId} />
+          <ParticipantStrip participants={participantList} />
         </div>
-        <aside className="flex flex-col gap-3">
-          <section className="rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-1)] p-3">
-            <h3 className="mb-2 text-xs font-semibold uppercase text-[color:var(--color-text-tertiary)]">
-              In the room ({participants.length})
-            </h3>
-            <ul className="space-y-1">
-              {participants.map((p) => (
-                <li key={p.presenceRef + p.userId} className="text-sm">
-                  {p.userId === hostUserId ? "👑 " : ""}{p.name ?? p.userId}
-                </li>
-              ))}
-            </ul>
-          </section>
+        <aside className="hidden flex-col gap-3 lg:flex">
           <ChatPanel chat={chat} onSend={handleChat} />
         </aside>
       </div>
+
+      <Sheet open={mobileChatOpen} onClose={() => setMobileChatOpen(false)} labelledBy="party-chat-sheet-title" heightVh={50}>
+        <h2 id="party-chat-sheet-title" className="sr-only">
+          Party chat
+        </h2>
+        <ChatPanel chat={chat} onSend={handleChat} />
+      </Sheet>
     </main>
   );
 }

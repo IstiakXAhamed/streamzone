@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Film, Users, Activity, Eye } from "lucide-react";
+import { StatCard } from "@/components/admin/StatCard";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +14,10 @@ export default async function AdminHome() {
     ]);
 
   const tiles = [
-    { label: "Total users", value: users ?? 0, Icon: Users, accent: "text-sky-400" },
-    { label: "Pending approvals", value: pending ?? 0, Icon: Activity, accent: "text-amber-400" },
-    { label: "Movies in catalog", value: movies ?? 0, Icon: Film, accent: "text-rose-400" },
-    { label: "Watch sessions", value: watches ?? 0, Icon: Eye, accent: "text-emerald-400" },
+    { label: "Total users", value: users ?? 0, Icon: Users, accentClassName: "text-sky-400" },
+    { label: "Pending approvals", value: pending ?? 0, Icon: Activity, accentClassName: "text-amber-400" },
+    { label: "Movies in catalog", value: movies ?? 0, Icon: Film, accentClassName: "text-rose-400" },
+    { label: "Watch sessions", value: watches ?? 0, Icon: Eye, accentClassName: "text-emerald-400" },
   ];
 
   return (
@@ -27,20 +28,7 @@ export default async function AdminHome() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {tiles.map(({ label, value, Icon, accent }) => (
-          <div
-            key={label}
-            className="rounded-2xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-2)]/60 p-4"
-          >
-            <div className="flex items-center justify-between">
-              <Icon size={20} className={accent} />
-              <span className="text-2xl font-bold">{value}</span>
-            </div>
-            <p className="mt-3 text-xs uppercase tracking-wide text-[color:var(--color-text-tertiary)]">
-              {label}
-            </p>
-          </div>
-        ))}
+        {tiles.map((tile) => <StatCard key={tile.label} {...tile} />)}
       </div>
     </div>
   );
