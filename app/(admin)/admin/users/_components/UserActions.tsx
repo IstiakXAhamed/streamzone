@@ -2,6 +2,7 @@
 
 import { useTransition, useState } from "react";
 import type { Role } from "@/types/db";
+import { ConfirmActionModal } from "@/components/admin/ConfirmActionModal";
 
 interface Summary {
   id: string;
@@ -13,6 +14,7 @@ interface Summary {
 export function UserActions({ user, callerRole }: { user: Summary; callerRole: Role }) {
   const [isPending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [confirmSuspend, setConfirmSuspend] = useState(false);
 
   function act(action: "approve" | "suspend" | "promote_admin" | "demote_user") {
     setError(null);
@@ -50,7 +52,7 @@ export function UserActions({ user, callerRole }: { user: Summary; callerRole: R
       </button>
       <button
         disabled={isPending || disableSuspend}
-        onClick={() => act("suspend")}
+        onClick={() => setConfirmSuspend(true)}
         className={`rounded-full px-3 py-1 text-xs font-medium transition ${
           disableSuspend
             ? "cursor-not-allowed bg-[color:var(--color-surface-3)] text-[color:var(--color-text-tertiary)]"
@@ -59,6 +61,18 @@ export function UserActions({ user, callerRole }: { user: Summary; callerRole: R
       >
         Suspend
       </button>
+      <ConfirmActionModal
+        open={confirmSuspend}
+        onClose={() => setConfirmSuspend(false)}
+        onConfirm={() => {
+          setConfirmSuspend(false);
+          act("suspend");
+        }}
+        title="Suspend this user?"
+        itemLabel={user.email}
+        confirmLabel="Suspend"
+        confirming={isPending}
+      />
       {canChangeRole && user.role === "user" && (
         <button
           disabled={isPending}

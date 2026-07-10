@@ -2,9 +2,8 @@ import { getServerSession } from "next-auth";
 import Link from "next/link";
 import { authOptions } from "@/lib/authOptions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { HeroRow } from "@/components/home/CarouselRow";
-import { CarouselRow } from "@/components/home/CarouselRow";
-import { SeriesRow } from "@/components/home/CarouselRow";
+import { Hero } from "@/components/hero/Hero";
+import { CarouselRow, SeriesRow } from "@/components/carousel/CarouselRow";
 import { ContinueWatchingRow } from "@/components/home/ContinueWatchingRow";
 import type { MovieRow, SeriesRow as SeriesRowType } from "@/types/db";
 
@@ -63,6 +62,16 @@ export default async function HomePage() {
 
   const isCompletelyEmpty = recent.length === 0 && seriesList.length === 0;
 
+  const heroSlides = featured.slice(0, 8).map((m) => ({
+    id: m.id,
+    slug: m.slug,
+    title: m.title,
+    year: m.year,
+    rating: m.rating,
+    backdropUrl: m.backdrop_url,
+    posterUrl: m.poster_url,
+  }));
+
   return (
     <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-8">
       {isCompletelyEmpty ? (
@@ -94,11 +103,13 @@ export default async function HomePage() {
         </section>
       ) : (
         <section className="space-y-8">
-          {featured.length > 0 && <HeroRow title="Featured" movies={featured} />}
-          {seriesList.length > 0 && <SeriesRow title="Series" series={seriesList} />}
+          {heroSlides.length > 0 ? <Hero slides={heroSlides} /> : null}
           {isAuthed && <ContinueWatchingRow />}
-          {featured.length > 0 && <CarouselRow title="Trending now" movies={featured} />}
-          <CarouselRow title="Recently added" movies={recent} />
+          {featured.length > 0 && (
+            <CarouselRow title="Trending Now" movies={featured} seeAllHref="/category/trending" />
+          )}
+          <CarouselRow title="Recently Added" movies={recent} seeAllHref="/category/all" />
+          {seriesList.length > 0 && <SeriesRow title="Series" series={seriesList} seeAllHref="/series" />}
         </section>
       )}
     </main>

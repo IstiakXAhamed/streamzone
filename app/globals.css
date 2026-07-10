@@ -14,13 +14,124 @@
   --color-border-subtle: rgba(255, 255, 255, 0.08);
   --color-border-strong: rgba(255, 255, 255, 0.16);
 
-  --color-text-primary: #f5f5f5;
-  --color-text-secondary: #b3b3b3;
-  --color-text-tertiary: #777777;
+  /* Text opacity tokens — primary 95% / secondary 70% / tertiary 50% (Req 1.1) */
+  --color-text-primary: hsla(0, 0%, 100%, 0.95);
+  --color-text-secondary: hsla(0, 0%, 100%, 0.70);
+  --color-text-tertiary: hsla(0, 0%, 100%, 0.50);
+
+  /* Semantic state colors — HSL (Req 1.1) */
+  --color-success: hsl(142, 71%, 45%);
+  --color-success-subtle: hsla(142, 71%, 45%, 0.12);
+  --color-success-contrast: hsl(0, 0%, 100%);
+
+  --color-warning: hsl(38, 92%, 50%);
+  --color-warning-subtle: hsla(38, 92%, 50%, 0.12);
+  --color-warning-contrast: hsl(20, 40%, 8%);
+
+  --color-error: hsl(0, 84%, 60%);
+  --color-error-subtle: hsla(0, 84%, 60%, 0.12);
+  --color-error-contrast: hsl(0, 0%, 100%);
+
+  --color-info: hsl(205, 90%, 58%);
+  --color-info-subtle: hsla(205, 90%, 58%, 0.12);
+  --color-info-contrast: hsl(0, 0%, 100%);
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  --radius-card: 0.875rem;
+  /* Typography scale (Req 1.2): size/line-height/weight per style */
+  --text-display: 48px;
+  --text-display--line-height: 1.1;
+  --text-display--font-weight: 700;
+
+  --text-heading: 32px;
+  --text-heading--line-height: 1.2;
+  --text-heading--font-weight: 700;
+
+  --text-title: 24px;
+  --text-title--line-height: 1.3;
+  --text-title--font-weight: 600;
+
+  --text-body: 16px;
+  --text-body--line-height: 1.5;
+  --text-body--font-weight: 400;
+
+  --text-caption: 12px;
+  --text-caption--line-height: 1.4;
+  --text-caption--font-weight: 500;
+
+  --text-overline: 10px;
+  --text-overline--line-height: 1.6;
+  --text-overline--font-weight: 600;
+
+  /* Spacing scale on a 4px grid (Req 1.3) */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --spacing-20: 80px;
+  --spacing-24: 96px;
+
+  /* Elevation tokens (Req 1.4) */
+  --shadow-elevation-1: 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-elevation-2: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-elevation-3: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-elevation-4: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  /* Motion tokens (Req 1.5) */
+  --duration-100: 100ms;
+  --duration-200: 200ms;
+  --duration-300: 300ms;
+  --duration-500: 500ms;
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  /* Radius tokens (Req 1.6) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+  --radius-card: var(--radius-md);
+}
+
+/* Typography scale utility classes (Req 1.2) */
+.text-display {
+  font-size: var(--text-display);
+  line-height: var(--text-display--line-height);
+  font-weight: var(--text-display--font-weight);
+}
+.text-heading {
+  font-size: var(--text-heading);
+  line-height: var(--text-heading--line-height);
+  font-weight: var(--text-heading--font-weight);
+}
+.text-title {
+  font-size: var(--text-title);
+  line-height: var(--text-title--line-height);
+  font-weight: var(--text-title--font-weight);
+}
+.text-body {
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+  font-weight: var(--text-body--font-weight);
+}
+.text-caption {
+  font-size: var(--text-caption);
+  line-height: var(--text-caption--line-height);
+  font-weight: var(--text-caption--font-weight);
+}
+.text-overline {
+  font-size: var(--text-overline);
+  line-height: var(--text-overline--line-height);
+  font-weight: var(--text-overline--font-weight);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 :root {
@@ -76,7 +187,12 @@ select {
   scroll-snap-align: start;
 }
 
-/* Skeleton shimmer placeholder */
+/* Smooth scroll by default (Req 20.3); disabled under reduced motion below */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Skeleton shimmer placeholder — 1.5s left-to-right sweep, token-driven (Req 20.4) */
 .mz-shimmer {
   position: relative;
   overflow: hidden;
@@ -87,9 +203,66 @@ select {
     var(--color-surface-2) 80%
   );
   background-size: 200% 100%;
-  animation: mz-shimmer 1.3s ease-in-out infinite;
+  animation: mz-shimmer 1.5s ease-in-out infinite;
 }
 @keyframes mz-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* Global reduced-motion guard (Req 14.5, 20.3, 20.6):
+   zero CSS transitions/animations, disable smooth scroll and shimmer sweep. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .mz-shimmer {
+    animation: none;
+    background-position: 0 0;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Page-transition view-transition group (Req 14.1): fade + 16px upward
+   translate over 300ms ease-out, used by components/layout/PageTransition.tsx. */
+::view-transition-old(.fade-up) {
+  animation: mz-fade-up-out 300ms var(--ease-out) both;
+}
+::view-transition-new(.fade-up) {
+  animation: mz-fade-up-in 300ms var(--ease-out) both;
+}
+@keyframes mz-fade-up-in {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes mz-fade-up-out {
+  from {
+    opacity: 1;
+    translate: 0 0;
+  }
+  to {
+    opacity: 0;
+    translate: 0 -16px;
+  }
 }
