@@ -1,6 +1,5 @@
 "use client";
 
-import { useStreamUrl } from "@/hooks/useStreamUrl";
 import { useMediaSession } from "@/hooks/useMediaSession";
 import { PlayerClient } from "@/components/player/PlayerClient";
 
@@ -10,30 +9,16 @@ export function WatchContent({
   movieId: string; defaultPoster: string | null; defaultTitle: string;
   movie: { slug: string; id: string } | null;
 }) {
-  const { data, error, isLoading } = useStreamUrl(movieId);
   useMediaSession(defaultTitle, "MovieZone", defaultPoster);
 
-  if (isLoading) {
-    return (
-      <div className="mx-auto grid aspect-video w-full max-w-6xl place-items-center px-4">
-        <p className="text-sm text-[color:var(--color-text-secondary)]">Preparing stream…</p>
-      </div>
-    );
-  }
-  if (error || !data) {
-    return (
-      <div className="mx-auto grid aspect-video w-full max-w-6xl place-items-center px-4">
-        <p className="text-sm text-[color:var(--color-brand)]">
-          Could not load stream: {error?.message ?? "unknown error"}
-        </p>
-      </div>
-    );
-  }
+  // Stream URL is deterministic — no need for a query/loading state.
+  // Auth is validated server-side when <video> makes its first Range request.
+  const streamUrl = `/api/stream/${movieId}`;
 
   return (
     <div className="mx-auto grid w-full max-w-6xl place-items-stretch px-4 py-4">
       <PlayerClient
-        src={data.url}
+        src={streamUrl}
         title={defaultTitle}
         poster={defaultPoster}
         movieId={movieId}

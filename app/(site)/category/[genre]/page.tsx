@@ -1,8 +1,9 @@
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
+import { getCachedGenreMovies } from "@/lib/cache";
 import { CategoryContent, type CategoryMovie } from "./_components/CategoryContent";
 
-export const dynamic = "force-dynamic";
+// ISR: revalidate every 60s instead of force-dynamic
+export const revalidate = 60;
 
 interface GenrePageProps { params: Promise<{ genre: string }>; }
 
@@ -13,13 +14,7 @@ export async function generateMetadata({ params }: GenrePageProps) {
 
 export default async function GenrePage({ params }: GenrePageProps) {
   const { genre } = await params;
-  const { data } = await supabaseAdmin
-    .from("movies")
-    .select("id,title,slug,year,poster_url,backdrop_url,rating,views_count,duration_seconds")
-    .eq("is_public", true)
-    .contains("genre", [genre])
-    .order("views_count", { ascending: false })
-    .limit(200);
+  const data = await getCachedGenreMovies(genre);
 
   if (!data) notFound();
 

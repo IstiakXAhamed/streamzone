@@ -1,10 +1,13 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getCachedMovie, getCachedCatalogue } from "@/lib/cache";
 import { MovieDetailContent } from "./_components/MovieDetailContent";
 import { relatedMovies } from "@/lib/ui/related";
+import { Skeleton } from "@/components/ui/Skeleton";
 
-export const dynamic = "force-dynamic";
+// ISR: revalidate every 60 seconds instead of force-dynamic
+export const revalidate = 60;
 
 interface Movie {
   id: string; title: string; slug: string; description: string | null;
@@ -13,47 +16,43 @@ interface Movie {
   trailer_drive_file_id: string | null;
 }
 
-async function findBySlug(slug: string): Promise<Movie | null> {
-  const { data } = await supabaseAdmin
-    .from("movies")
-    .select("*")
-    .eq("slug", slug)
-    .eq("is_public", true)
-    .maybeSingle();
-  return (data as Movie | null) ?? null;
-}
-
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const movie = await findBySlug(slug);
+  const movie = await getCachedMovie(slug);
   if (!movie) return { title: "Movie not found · MovieZone" };
   return { title: `${movie.title} · MovieZone`, description: movie.description ?? "" };
 }
 
-export default async function MovieDetailPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const movie = await findBySlug(slug);
-  if (!movie) notFound();
-
-  const { data: catalogue } = await supabaseAdmin
-    .from("movies")
-    .select("id,title,slug,year,poster_url,backdrop_url,rating,views_count,duration_seconds,featured,created_at,genre")
-    .eq("is_public", true)
-    .neq("id", movie.id)
-    .order("views_count", { ascending: false })
-    .limit(200);
+/** Related movies section streamed separately so the main content renders immediately */
+async function RelatedSection({ movie }: { movie: Movie }) {
+  const catalogue = await getCachedCatalogue(movie.id);
 
   const related = relatedMovies(
     { id: movie.id, genres: movie.genre },
-    (catalogue ?? []).map((m) => ({ id: m.id, genres: m.genre as string[] })),
+    catalogue.map((m) => ({ id: m.id, genres: m.genre as string[] })),
   );
   const relatedIds = new Set(related.map((m) => m.id));
 
-  const movieCards = (catalogue ?? [])
+  const movieCards = catalogue
     .filter((m) => relatedIds.has(m.id))
     .map((m) => ({
       id: m.id, title: m.title, slug: m.slug, year: m.year, rating: m.rating,
       poster_url: m.poster_url, backdrop_url: m.backdrop_url, duration_seconds: m.duration_seconds,
     }));
+
+  if (movieCards.length === 0) return null;
   return <MovieDetailContent movie={movie} related={movieCards} />;
+}
+
+export default async function MovieDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const movie = await getCachedMovie(slug) as Movie | null;
+  if (!movie) notFound();
+
+  // Stream the related section while showing the main content immediately
+  return (
+    <Suspense fallback={<MovieDetailContent movie={movie} related={[]} />}>
+      <RelatedSection movie={movie} />
+    </Suspense>
+  );
 }

@@ -160,6 +160,7 @@ export function PlayerClient({ src, title, poster, movieId, isHost = true, onCon
         ref={videoRef}
         src={src}
         poster={poster ?? undefined}
+        preload="auto"
         playsInline
         controls={isHost}
         onPlay={handlePlay}

@@ -7,14 +7,21 @@ import type { NextRequest } from "next/server";
 export const dynamic = "force-dynamic";
 
 /**
+ * In-memory caches to avoid hitting Supabase on every range request.
+ * A single video playback can fire dozens of range requests; we don't
+ * need to verify the user + movie for each one within a short window.
+ */
+const userCache = new Map<string, { status: string; id: string; expiresAt: number }>();
+const movieCache = new Map<string, { drive_file_id: string; expiresAt: number }>();
+const USER_CACHE_TTL = 5 * 60 * 1000; // 5 min
+const MOVIE_CACHE_TTL = 10 * 60 * 1000; // 10 min
+
+/**
  * GET /api/stream/:movieId
  *
- * Proxies video bytes from Google Drive to the browser. This avoids CORS
- * issues (Google Drive's alt=media endpoint doesn't allow cross-origin
- * requests from <video> elements). Supports Range requests for seeking.
- *
- * The Vercel function streams the response — it doesn't buffer the entire
- * file. Each browser Range request is typically 1-4MB, well within limits.
+ * Proxies video bytes from Google Drive to the browser. Supports Range
+ * requests for seeking. Uses in-memory caching to avoid repeated DB
+ * lookups during continuous playback.
  */
 export async function GET(
   req: NextRequest,
@@ -26,26 +33,44 @@ export async function GET(
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const { data: urow } = await supabaseAdmin
-    .from("users")
-    .select("id,status")
-    .ilike("email", session.user.email)
-    .maybeSingle();
-  if (!urow || urow.status !== "approved") {
+
+  const email = session.user.email;
+  const now = Date.now();
+
+  // Check user authorization (cached for 5 min per email)
+  let userInfo = userCache.get(email);
+  if (!userInfo || userInfo.expiresAt < now) {
+    const { data: urow } = await supabaseAdmin
+      .from("users")
+      .select("id,status")
+      .ilike("email", email)
+      .maybeSingle();
+    if (!urow || urow.status !== "approved") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    userInfo = { status: urow.status, id: urow.id, expiresAt: now + USER_CACHE_TTL };
+    userCache.set(email, userInfo);
+  } else if (userInfo.status !== "approved") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: movie } = await supabaseAdmin
-    .from("movies")
-    .select("id,drive_file_id,is_public,title")
-    .eq("id", movieId)
-    .eq("is_public", true)
-    .single();
-  if (!movie) {
-    return NextResponse.json({ error: "Movie not found" }, { status: 404 });
+  // Check movie existence (cached for 10 min per movieId)
+  let movieInfo = movieCache.get(movieId);
+  if (!movieInfo || movieInfo.expiresAt < now) {
+    const { data: movie } = await supabaseAdmin
+      .from("movies")
+      .select("id,drive_file_id,is_public,title")
+      .eq("id", movieId)
+      .eq("is_public", true)
+      .single();
+    if (!movie) {
+      return NextResponse.json({ error: "Movie not found" }, { status: 404 });
+    }
+    movieInfo = { drive_file_id: movie.drive_file_id, expiresAt: now + MOVIE_CACHE_TTL };
+    movieCache.set(movieId, movieInfo);
   }
 
-  // Build the Drive download URL and get a fresh token
+  // Get a fresh Drive token
   let token: string;
   try {
     const { getStorageAccountToken, getAccessToken } = await import("@/lib/googleDrive");
@@ -58,9 +83,9 @@ export async function GET(
     return NextResponse.json({ error: `Token error: ${(e as Error).message}` }, { status: 500 });
   }
 
-  const driveUrl = `https://www.googleapis.com/drive/v3/files/${movie.drive_file_id}?alt=media&supportsAllDrives=true`;
+  const driveUrl = `https://www.googleapis.com/drive/v3/files/${movieInfo.drive_file_id}?alt=media&supportsAllDrives=true`;
 
-  // Forward the browser's Range header to Google, auth via header (not query param)
+  // Forward the browser's Range header to Google
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
   };
@@ -92,8 +117,8 @@ export async function GET(
   const contentRange = driveRes.headers.get("content-range");
   if (contentRange) resHeaders.set("Content-Range", contentRange);
 
-  // Cache the streamed bytes for performance (1 hour)
-  resHeaders.set("Cache-Control", "private, max-age=3600");
+  // Cache streamed bytes aggressively (browser-private, 2 hours)
+  resHeaders.set("Cache-Control", "private, max-age=7200, stale-while-revalidate=3600");
 
   return new Response(driveRes.body, {
     status: driveRes.status, // 200 or 206

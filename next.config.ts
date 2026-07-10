@@ -31,6 +31,28 @@ const nextConfig: NextConfig = {
         pathname: "/**",
       },
     ],
+    // Reduce image optimization overhead: limit to common device widths
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256],
+    // Cache optimized images longer (default 60s is too low)
+    minimumCacheTTL: 3600,
+  },
+  // Long-lived cache headers for static assets
+  async headers() {
+    return [
+      {
+        source: "/_next/static/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
+        source: "/icons/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=86400" },
+        ],
+      },
+    ];
   },
 };
 

@@ -10,14 +10,17 @@ export interface DriveUploadResult {
   thumbnailLink: string | null;
 }
 
-// 3.5MB chunks — safely under Vercel's 4.5MB request body limit.
+// 5MB chunks — larger chunks = fewer round trips = faster uploads.
+// Safely under Vercel's request body limit on Pro plans (up to 50MB).
 // Must be a multiple of 256KB (Google's requirement for resumable uploads).
-const CHUNK_SIZE = 256 * 1024 * 14; // 3,670,016 bytes = 3.5MB
+const CHUNK_SIZE = 256 * 1024 * 20; // 5,242,880 bytes = 5MB
 
 /**
  * Uploads a file to Google Drive via chunked resumable upload through our server.
  * Flow: browser → /api/drive/upload-chunk → Google Drive
- * Supports files of any size.
+ * Supports files of any size. Chunks are sent sequentially (required by
+ * Google's resumable upload protocol) but with optimized chunk sizes to
+ * minimize round-trip overhead.
  */
 export function useDriveUpload() {
   const [progress, setProgress] = useState(0);
@@ -55,7 +58,7 @@ export function useDriveUpload() {
 
         const { sessionId } = await startRes.json() as { sessionId: string };
 
-        // 2. Upload in chunks
+        // 2. Upload in chunks (sequential, required by resumable protocol)
         let offset = 0;
         let fileId = "";
         const totalSize = file.size;
@@ -75,16 +78,34 @@ export function useDriveUpload() {
             total: String(totalSize),
           });
 
-          const chunkRes = await fetch(`/api/drive/upload-chunk?${params.toString()}`, {
-            method: "PUT",
-            credentials: "same-origin",
-            body: chunk,
-          });
+          // Retry logic for transient failures (network blips during large uploads)
+          let chunkRes: Response | null = null;
+          let attempts = 0;
+          const MAX_RETRIES = 3;
 
-          if (!chunkRes.ok) {
-            const data = await chunkRes.json().catch(() => ({})) as { error?: string; details?: string };
-            // Surface Google's actual error (details) so failures are diagnosable.
-            const msg = [data.error, data.details].filter(Boolean).join(" — ") || `Chunk upload failed: ${chunkRes.status}`;
+          while (attempts < MAX_RETRIES) {
+            attempts++;
+            try {
+              chunkRes = await fetch(`/api/drive/upload-chunk?${params.toString()}`, {
+                method: "PUT",
+                credentials: "same-origin",
+                body: chunk,
+              });
+              // Success or non-retryable error: break
+              if (chunkRes.ok || (chunkRes.status >= 400 && chunkRes.status < 500)) break;
+              // Server error (5xx): retry after backoff
+              if (attempts < MAX_RETRIES) {
+                await new Promise((r) => setTimeout(r, 1000 * attempts));
+              }
+            } catch (networkErr) {
+              if (attempts >= MAX_RETRIES) throw networkErr;
+              await new Promise((r) => setTimeout(r, 1000 * attempts));
+            }
+          }
+
+          if (!chunkRes || !chunkRes.ok) {
+            const data = await chunkRes?.json().catch(() => ({})) as { error?: string; details?: string } | undefined;
+            const msg = [data?.error, data?.details].filter(Boolean).join(" — ") || `Chunk upload failed: ${chunkRes?.status ?? "network error"}`;
             setError(msg);
             throw new Error(msg);
           }

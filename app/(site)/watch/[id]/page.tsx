@@ -8,8 +8,10 @@ import { WatchContent } from "./_components/WatchContent";
 export const dynamic = "force-dynamic";
 
 export default async function WatchPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id: movieId } = await params;
-  const session = await getServerSession(authOptions);
+  const [{ id: movieId }, session] = await Promise.all([
+    params,
+    getServerSession(authOptions),
+  ]);
   if (!session?.user) redirect("/login");
   if (session.user.status !== "approved") redirect("/pending");
 

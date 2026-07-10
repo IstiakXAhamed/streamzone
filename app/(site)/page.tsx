@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { getServerSession } from "next-auth";
 import Link from "next/link";
 import { authOptions } from "@/lib/authOptions";
@@ -5,39 +6,63 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Hero } from "@/components/hero/Hero";
 import { CarouselRow, SeriesRow } from "@/components/carousel/CarouselRow";
 import { ContinueWatchingRow } from "@/components/home/ContinueWatchingRow";
-import type { MovieRow, SeriesRow as SeriesRowType } from "@/types/db";
+import { getCachedPublicMovies, getCachedFeaturedMovies, getCachedPublicSeries } from "@/lib/cache";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { MovieCardSkeleton } from "@/components/home/MovieCard";
 
-async function getPublicMovies(featured?: boolean): Promise<MovieRow[]> {
-  try {
-    let query = supabaseAdmin
-      .from("movies")
-      .select("*")
-      .eq("is_public", true)
-      .order("featured", { ascending: false })
-      .order("views_count", { ascending: false })
-      .limit(40);
-    if (featured) query = query.eq("featured", true);
-    const { data, error } = await query;
-    if (error) return [];
-    return (data ?? []) as MovieRow[];
-  } catch {
-    return [];
-  }
+// Revalidate page-level cache every 60s (ISR) instead of force-dynamic
+export const revalidate = 60;
+
+function RowSkeleton() {
+  return (
+    <div>
+      <Skeleton className="mb-3 h-6 w-40" />
+      <div className="flex gap-3 overflow-hidden">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <MovieCardSkeleton key={i} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
-async function getPublicSeries(): Promise<SeriesRowType[]> {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from("series")
-      .select("id,title,slug,year,poster_url,backdrop_url,rating,seasons_count,episodes_count")
-      .eq("is_public", true)
-      .order("created_at", { ascending: false })
-      .limit(30);
-    if (error) return [];
-    return (data ?? []) as unknown as SeriesRowType[];
-  } catch {
-    return [];
-  }
+/** Streamed section: featured hero + trending row */
+async function FeaturedSection() {
+  const featured = await getCachedFeaturedMovies();
+  if (featured.length === 0) return null;
+
+  const heroSlides = featured.slice(0, 8).map((m) => ({
+    id: m.id,
+    slug: m.slug,
+    title: m.title,
+    year: m.year,
+    rating: m.rating,
+    backdropUrl: m.backdrop_url,
+    posterUrl: m.poster_url,
+  }));
+
+  return (
+    <>
+      {heroSlides.length > 0 && <Hero slides={heroSlides} />}
+      {featured.length > 0 && (
+        <CarouselRow title="Trending Now" movies={featured} seeAllHref="/category/trending" />
+      )}
+    </>
+  );
+}
+
+/** Streamed section: recently added movies */
+async function RecentSection() {
+  const recent = await getCachedPublicMovies(false);
+  if (recent.length === 0) return null;
+  return <CarouselRow title="Recently Added" movies={recent} seeAllHref="/category/all" />;
+}
+
+/** Streamed section: series */
+async function SeriesSection() {
+  const seriesList = await getCachedPublicSeries();
+  if (seriesList.length === 0) return null;
+  return <SeriesRow title="Series" series={seriesList} seeAllHref="/series" />;
 }
 
 export default async function HomePage() {
@@ -54,23 +79,9 @@ export default async function HomePage() {
     isAdmin = row?.role === "admin" || row?.role === "superadmin";
   }
 
-  const [featured, recent, seriesList] = await Promise.all([
-    getPublicMovies(true),
-    getPublicMovies(false),
-    getPublicSeries(),
-  ]);
-
-  const isCompletelyEmpty = recent.length === 0 && seriesList.length === 0;
-
-  const heroSlides = featured.slice(0, 8).map((m) => ({
-    id: m.id,
-    slug: m.slug,
-    title: m.title,
-    year: m.year,
-    rating: m.rating,
-    backdropUrl: m.backdrop_url,
-    posterUrl: m.poster_url,
-  }));
+  // Quick check if catalogue is empty (cached, cheap)
+  const recent = await getCachedPublicMovies(false);
+  const isCompletelyEmpty = recent.length === 0;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-8">
@@ -103,13 +114,19 @@ export default async function HomePage() {
         </section>
       ) : (
         <section className="space-y-8">
-          {heroSlides.length > 0 ? <Hero slides={heroSlides} /> : null}
+          <Suspense fallback={<Skeleton className="aspect-[16/7] w-full sm:aspect-[16/6]" rounded="lg" />}>
+            <FeaturedSection />
+          </Suspense>
+
           {isAuthed && <ContinueWatchingRow />}
-          {featured.length > 0 && (
-            <CarouselRow title="Trending Now" movies={featured} seeAllHref="/category/trending" />
-          )}
-          <CarouselRow title="Recently Added" movies={recent} seeAllHref="/category/all" />
-          {seriesList.length > 0 && <SeriesRow title="Series" series={seriesList} seeAllHref="/series" />}
+
+          <Suspense fallback={<RowSkeleton />}>
+            <RecentSection />
+          </Suspense>
+
+          <Suspense fallback={<RowSkeleton />}>
+            <SeriesSection />
+          </Suspense>
         </section>
       )}
     </main>
