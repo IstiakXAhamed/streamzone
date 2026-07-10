@@ -9,7 +9,7 @@
  */
 
 import Link from "next/link";
-import { ChevronRight, Pencil } from "lucide-react";
+import { ChevronRight, Pencil, ShieldCheck } from "lucide-react";
 import { CarouselRow } from "@/components/carousel/CarouselRow";
 import type { MovieCardData } from "@/components/home/MovieCard";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -48,6 +48,7 @@ export function ProfileContent({
 }) {
   const stats = computeWatchStats(watchHistory);
   const memberSince = memberSinceLabel(user.createdAt);
+  const isAdmin = user.role === "admin" || user.role === "superadmin";
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
@@ -103,6 +104,21 @@ export function ProfileContent({
           <CarouselRow title="Continue Watching" movies={continueWatchingCards} />
         )}
       </section>
+
+      {isAdmin ? (
+        <section className="mb-4">
+          <Link
+            href="/admin"
+            className="flex items-center justify-between rounded-xl border border-[color:var(--color-brand)]/40 bg-[color:var(--color-brand)]/10 px-4 py-3 text-sm font-semibold transition-colors hover:bg-[color:var(--color-brand)]/20"
+          >
+            <span className="flex items-center gap-2">
+              <ShieldCheck aria-hidden="true" className="h-4 w-4 text-[color:var(--color-brand)]" />
+              Admin Panel
+            </span>
+            <ChevronRight aria-hidden="true" className="h-4 w-4 text-[color:var(--color-brand)]" />
+          </Link>
+        </section>
+      ) : null}
 
       <section className="overflow-hidden rounded-xl bg-[color:var(--color-surface-1)]">
         {ACCOUNT_ACTIONS.map((action, i) => (
