@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   const tags = body?.tags ?? ["movies", "series"];
 
   for (const tag of tags) {
-    revalidateTag(tag);
+    revalidateTag(tag, "max");
   }
 
   return NextResponse.json({ revalidated: tags, now: Date.now() });

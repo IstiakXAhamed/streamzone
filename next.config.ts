@@ -37,15 +37,9 @@ const nextConfig: NextConfig = {
     // Cache optimized images longer (default 60s is too low)
     minimumCacheTTL: 3600,
   },
-  // Long-lived cache headers for static assets
+  // Long-lived cache headers for static assets (excluding _next/static which Vercel handles)
   async headers() {
     return [
-      {
-        source: "/_next/static/:path*",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-        ],
-      },
       {
         source: "/icons/:path*",
         headers: [

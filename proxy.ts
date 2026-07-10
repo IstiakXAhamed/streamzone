@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 /**
- * Edge middleware for performance.
+ * Edge proxy for performance.
  *
  * 1. Fast auth-gate: Redirects unauthenticated users away from protected routes
  *    at the edge (CDN layer) without needing a full server render.
- * 2. Security headers for all responses.
+ * 2. Pre-connect headers for faster external resource loading.
  *
  * This checks the JWT cookie existence (NOT validity — that's done in the
  * layouts). The goal is to fail fast for obvious non-auth requests.
@@ -15,7 +15,7 @@ import type { NextRequest } from "next/server";
 // Protected route prefixes that require a session cookie
 const PROTECTED_PREFIXES = ["/watch", "/party", "/downloads", "/friends", "/profile", "/admin"];
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Check if this is a protected route
@@ -35,10 +35,9 @@ export function middleware(req: NextRequest) {
     }
   }
 
-  // Add performance and security headers
+  // Add performance headers: pre-connect to known external origins
   const response = NextResponse.next();
 
-  // Prevent slow DNS lookups by pre-connecting to known external origins
   response.headers.set(
     "Link",
     [
