@@ -54,6 +54,13 @@ export async function POST(req: Request) {
 
     const mimeType = parsed.mimeType ?? "application/octet-stream";
 
+    // The browser will PUT chunks DIRECTLY to Google (bypassing Vercel), so we
+    // must bind the session to the caller's Origin. Google echoes this origin
+    // back as Access-Control-Allow-Origin on the direct chunk uploads, which is
+    // what makes cross-origin browser PUTs work. Without this, the browser's
+    // direct upload is blocked by CORS.
+    const browserOrigin = req.headers.get("origin");
+
     // Create resumable upload session as the storage account
     const res = await fetch(
       "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id",
@@ -64,6 +71,8 @@ export async function POST(req: Request) {
           "content-type": "application/json; charset=UTF-8",
           "x-upload-content-type": mimeType,
           ...(parsed.fileSize ? { "x-upload-content-length": String(parsed.fileSize) } : {}),
+          // Bind CORS to the browser's origin so it can upload chunks directly.
+          ...(browserOrigin ? { origin: browserOrigin } : {}),
         },
         body: JSON.stringify(metadata),
       },
@@ -102,7 +111,12 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ sessionId: sessionRow.id });
+    // Return BOTH:
+    //  - uploadUrl: the direct Google session URI so the browser uploads chunks
+    //    straight to Google (fast path, no Vercel bandwidth/size limits).
+    //  - sessionId: short id for the proxy fallback route (/api/drive/upload-chunk)
+    //    used if a browser/network blocks the direct cross-origin PUT.
+    return NextResponse.json({ sessionId: sessionRow.id, uploadUrl });
   } catch (e) {
     console.error("upload-start failed:", e);
     return NextResponse.json(

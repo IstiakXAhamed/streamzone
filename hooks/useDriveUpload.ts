@@ -10,17 +10,28 @@ export interface DriveUploadResult {
   thumbnailLink: string | null;
 }
 
-// 5MB chunks — larger chunks = fewer round trips = faster uploads.
-// Safely under Vercel's request body limit on Pro plans (up to 50MB).
-// Must be a multiple of 256KB (Google's requirement for resumable uploads).
-const CHUNK_SIZE = 256 * 1024 * 20; // 5,242,880 bytes = 5MB
+// Direct-to-Google chunk size. Bytes go browser → Google Drive directly, so
+// we're NOT bound by Vercel's 4.5MB serverless body limit. Bigger chunks =
+// far fewer round trips = much faster uploads. Must be a multiple of 256KB
+// (Google's requirement for resumable uploads).
+const DIRECT_CHUNK_SIZE = 256 * 1024 * 64; // 16,777,216 bytes = 16MB
+
+// Fallback chunk size for the Vercel proxy path (must stay < 4.5MB body limit).
+const PROXY_CHUNK_SIZE = 256 * 1024 * 14; // 3,670,016 bytes = 3.5MB
+
+const MAX_RETRIES = 3;
 
 /**
- * Uploads a file to Google Drive via chunked resumable upload through our server.
- * Flow: browser → /api/drive/upload-chunk → Google Drive
- * Supports files of any size. Chunks are sent sequentially (required by
- * Google's resumable upload protocol) but with optimized chunk sizes to
- * minimize round-trip overhead.
+ * Uploads a file to Google Drive via chunked resumable upload.
+ *
+ * Fast path (default): the browser PUTs chunks DIRECTLY to Google's resumable
+ * session URI. Vercel only creates the session. This avoids the double network
+ * hop (browser → Vercel → Google) and Vercel's request size / duration limits.
+ *
+ * Fallback path: if the direct cross-origin PUT is blocked (rare — some
+ * corporate proxies / browser configs), we retry the same session through our
+ * server proxy route (/api/drive/upload-chunk), which stays under Vercel's
+ * 4.5MB body limit.
  */
 export function useDriveUpload() {
   const [progress, setProgress] = useState(0);
@@ -56,65 +67,49 @@ export function useDriveUpload() {
           throw new Error(msg);
         }
 
-        const { sessionId } = await startRes.json() as { sessionId: string };
+        const { sessionId, uploadUrl } = await startRes.json() as {
+          sessionId: string;
+          uploadUrl?: string;
+        };
 
-        // 2. Upload in chunks (sequential, required by resumable protocol)
-        let offset = 0;
-        let fileId = "";
         const totalSize = file.size;
+        let fileId = "";
+
+        // Try the fast direct-to-Google path first.
+        let useDirect = Boolean(uploadUrl);
+
+        // 2. Upload in chunks (sequential — required by resumable protocol)
+        let offset = 0;
 
         while (offset < totalSize) {
-          if (abortRef.current) {
-            throw new Error("Upload cancelled");
-          }
+          if (abortRef.current) throw new Error("Upload cancelled");
 
-          const end = Math.min(offset + CHUNK_SIZE, totalSize) - 1;
+          // Recompute per iteration: if we fall back to the proxy mid-file,
+          // the chunk size must shrink to stay under Vercel's 4.5MB body limit.
+          const chunkSize = useDirect ? DIRECT_CHUNK_SIZE : PROXY_CHUNK_SIZE;
+          const end = Math.min(offset + chunkSize, totalSize) - 1;
           const chunk = file.slice(offset, end + 1);
 
-          const params = new URLSearchParams({
-            sid: sessionId,
-            start: String(offset),
-            end: String(end),
-            total: String(totalSize),
-          });
+          let done = false;
+          let returnedFileId = "";
 
-          // Retry logic for transient failures (network blips during large uploads)
-          let chunkRes: Response | null = null;
-          let attempts = 0;
-          const MAX_RETRIES = 3;
-
-          while (attempts < MAX_RETRIES) {
-            attempts++;
-            try {
-              chunkRes = await fetch(`/api/drive/upload-chunk?${params.toString()}`, {
-                method: "PUT",
-                credentials: "same-origin",
-                body: chunk,
-              });
-              // Success or non-retryable error: break
-              if (chunkRes.ok || (chunkRes.status >= 400 && chunkRes.status < 500)) break;
-              // Server error (5xx): retry after backoff
-              if (attempts < MAX_RETRIES) {
-                await new Promise((r) => setTimeout(r, 1000 * attempts));
-              }
-            } catch (networkErr) {
-              if (attempts >= MAX_RETRIES) throw networkErr;
-              await new Promise((r) => setTimeout(r, 1000 * attempts));
+          if (useDirect && uploadUrl) {
+            const result = await uploadChunkDirect(uploadUrl, chunk, offset, end, totalSize);
+            if (result.corsBlocked) {
+              // Direct path is blocked — fall back to the Vercel proxy for the
+              // REST of the file. Re-slice at proxy chunk size from this offset.
+              useDirect = false;
+              continue;
             }
+            done = result.done;
+            returnedFileId = result.fileId;
+          } else {
+            const result = await uploadChunkProxy(sessionId, chunk, offset, end, totalSize);
+            done = result.done;
+            returnedFileId = result.fileId;
           }
 
-          if (!chunkRes || !chunkRes.ok) {
-            const data = await chunkRes?.json().catch(() => ({})) as { error?: string; details?: string } | undefined;
-            const msg = [data?.error, data?.details].filter(Boolean).join(" — ") || `Chunk upload failed: ${chunkRes?.status ?? "network error"}`;
-            setError(msg);
-            throw new Error(msg);
-          }
-
-          const result = await chunkRes.json() as { done: boolean; fileId?: string };
-
-          if (result.done) {
-            fileId = result.fileId ?? "";
-          }
+          if (done) fileId = returnedFileId;
 
           offset = end + 1;
           const pct = Math.round((offset / totalSize) * 100);
@@ -136,7 +131,7 @@ export function useDriveUpload() {
       } catch (e) {
         setBusy(false);
         const msg = (e as Error).message;
-        if (!error) setError(msg);
+        setError((prev) => prev ?? msg);
         throw e;
       }
     },
@@ -149,4 +144,105 @@ export function useDriveUpload() {
   }, []);
 
   return { startUpload, cancel, progress, busy, error };
+}
+
+// ─── Direct-to-Google chunk upload ───────────────────────────────────────────
+
+async function uploadChunkDirect(
+  uploadUrl: string,
+  chunk: Blob,
+  start: number,
+  end: number,
+  total: number,
+): Promise<{ done: boolean; fileId: string; corsBlocked?: boolean }> {
+  const contentRange = `bytes ${start}-${end}/${total}`;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Range": contentRange },
+        body: chunk,
+        // No credentials — the session URI is self-authenticating.
+      });
+
+      // 308 = Resume Incomplete (more chunks expected)
+      if (res.status === 308) return { done: false, fileId: "" };
+
+      // 200/201 = complete
+      if (res.ok) {
+        const data = await res.json().catch(() => ({})) as { id?: string };
+        return { done: true, fileId: data.id ?? "" };
+      }
+
+      // 5xx — retry with backoff
+      if (res.status >= 500 && attempt < MAX_RETRIES) {
+        await delay(1000 * attempt);
+        continue;
+      }
+
+      // 4xx (non-retryable, e.g. session expired)
+      throw new Error(`Direct upload failed: ${res.status}`);
+    } catch (e) {
+      // A CORS block or network failure surfaces as a TypeError ("Failed to
+      // fetch"). Signal the caller to fall back to the proxy path.
+      if (e instanceof TypeError) {
+        return { done: false, fileId: "", corsBlocked: true };
+      }
+      if (attempt >= MAX_RETRIES) throw e;
+      await delay(1000 * attempt);
+    }
+  }
+
+  return { done: false, fileId: "", corsBlocked: true };
+}
+
+// ─── Vercel proxy chunk upload (fallback) ────────────────────────────────────
+
+async function uploadChunkProxy(
+  sessionId: string,
+  chunk: Blob,
+  start: number,
+  end: number,
+  total: number,
+): Promise<{ done: boolean; fileId: string }> {
+  const params = new URLSearchParams({
+    sid: sessionId,
+    start: String(start),
+    end: String(end),
+    total: String(total),
+  });
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(`/api/drive/upload-chunk?${params.toString()}`, {
+        method: "PUT",
+        credentials: "same-origin",
+        body: chunk,
+      });
+
+      if (res.ok) {
+        const data = await res.json() as { done: boolean; fileId?: string };
+        return { done: data.done, fileId: data.fileId ?? "" };
+      }
+
+      if (res.status >= 500 && attempt < MAX_RETRIES) {
+        await delay(1000 * attempt);
+        continue;
+      }
+
+      const data = await res.json().catch(() => ({})) as { error?: string; details?: string };
+      const msg = [data.error, data.details].filter(Boolean).join(" — ") || `Chunk upload failed: ${res.status}`;
+      throw new Error(msg);
+    } catch (e) {
+      if (attempt >= MAX_RETRIES) throw e;
+      await delay(1000 * attempt);
+    }
+  }
+
+  throw new Error("Chunk upload failed after retries");
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
