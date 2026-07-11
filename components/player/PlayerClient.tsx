@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
+import { AlertTriangle, Download } from "lucide-react";
 
 interface Props {
   src: string;
@@ -28,6 +29,9 @@ const GUEST_DRIFT_CHECK = 1000;
 export function PlayerClient({ src, title, poster, movieId, isHost = true, onControl, syncCommand }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const ignoreEvents = useRef(false);
+  // Set when the browser cannot decode the file (e.g. HEVC/H.265 in Chrome, or
+  // an MKV container which no browser plays natively via <video>).
+  const [playbackError, setPlaybackError] = useState(false);
   // Track the latest known host state for drift correction
   const hostState = useRef<{ time: number; playing: boolean; receivedAt: number }>({
     time: 0,
@@ -166,8 +170,28 @@ export function PlayerClient({ src, title, poster, movieId, isHost = true, onCon
         onPlay={handlePlay}
         onPause={handlePause}
         onSeeked={handleSeeked}
+        onError={() => setPlaybackError(true)}
         className="h-full w-full object-contain"
       />
+      {playbackError && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/85 p-6 text-center">
+          <AlertTriangle aria-hidden="true" className="h-8 w-8 text-[color:var(--color-warning)]" />
+          <p className="text-sm font-semibold text-white">This video can&apos;t play in your browser</p>
+          <p className="max-w-sm text-xs text-[color:var(--color-text-secondary)]">
+            The file format (e.g. HEVC/H.265 or MKV) isn&apos;t supported for in-browser
+            playback. Download it to watch in a media player like VLC, or try a
+            different browser.
+          </p>
+          <a
+            href={src}
+            download
+            className="inline-flex items-center gap-2 rounded-full bg-[color:var(--color-brand)] px-4 py-2 text-sm font-medium text-white"
+          >
+            <Download aria-hidden="true" className="h-4 w-4" />
+            Download to watch
+          </a>
+        </div>
+      )}
       {!isHost && (
         <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center bg-gradient-to-t from-black/60 to-transparent pb-3 pt-8">
           <span className="rounded-full bg-black/70 px-3 py-1 text-xs text-[color:var(--color-text-secondary)]">

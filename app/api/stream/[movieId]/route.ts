@@ -6,6 +6,21 @@ import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+// Keep the function alive long enough to finish piping a byte-range to slow
+// connections. Without this, a large range over a slow mobile link can hit the
+// default timeout mid-stream and cut off — which the viewer sees as buffering
+// or a stall. (Matches the plan limit used by the upload route.)
+export const maxDuration = 300;
+
+// Run the streaming function close to viewers to cut the user↔Vercel latency
+// (the biggest cause of buffering). Set this to the Vercel region nearest your
+// audience. Common values:
+//   "bom1" = Mumbai (South Asia)   "sin1" = Singapore (SE Asia)
+//   "iad1" = US East               "fra1" = Frankfurt (Europe)
+//   "lhr1" = London                "syd1" = Sydney
+// Change this ONE value if most of your users are elsewhere.
+export const preferredRegion = "bom1";
+
 /**
  * In-memory caches to avoid hitting Supabase on every range request.
  * A single video playback can fire dozens of range requests; we don't

@@ -86,3 +86,40 @@ export async function GET() {
     .limit(50);
   return NextResponse.json({ movies: data ?? [] });
 }
+
+/**
+ * DELETE /api/movies/ingest
+ * Admin-only. Removes a movie row by id. Related watch_history, watch_party_rooms,
+ * and saved_offline rows are removed automatically via ON DELETE CASCADE.
+ * Body: { id: string }
+ */
+export async function DELETE(req: Request) {
+  const { user, error } = await requireRole("admin", "superadmin");
+  if (error) return error;
+
+  const body = (await req.json().catch(() => null)) as { id?: string } | null;
+  if (!body?.id) {
+    return NextResponse.json({ error: "id is required" }, { status: 400 });
+  }
+
+  const { data: movie } = await supabaseAdmin
+    .from("movies")
+    .select("id,title")
+    .eq("id", body.id)
+    .maybeSingle();
+  if (!movie) {
+    return NextResponse.json({ error: "Movie not found" }, { status: 404 });
+  }
+
+  const { error: delErr } = await supabaseAdmin.from("movies").delete().eq("id", body.id);
+  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+
+  await supabaseAdmin.from("admin_activity_log").insert({
+    admin_user_id: user.id || null,
+    action: "delete_movie",
+    target_id: body.id,
+    metadata: { title: movie.title },
+  });
+
+  return NextResponse.json({ ok: true });
+}

@@ -118,10 +118,25 @@ export async function POST(req: Request) {
   return NextResponse.json({ error: "unknown mode" }, { status: 400 });
 }
 
-/** GET /api/series/ingest — list series for the admin page. */
-export async function GET() {
+/**
+ * GET /api/series/ingest — list series for the admin page.
+ * GET /api/series/ingest?seriesId=<id> — list episodes for one series.
+ */
+export async function GET(req: Request) {
   const { error } = await requireRole("admin", "superadmin");
   if (error) return error;
+
+  const seriesId = new URL(req.url).searchParams.get("seriesId");
+
+  if (seriesId) {
+    const { data } = await supabaseAdmin
+      .from("episodes")
+      .select("id,season_number,episode_number,title,duration_seconds,created_at")
+      .eq("series_id", seriesId)
+      .order("season_number", { ascending: true })
+      .order("episode_number", { ascending: true });
+    return NextResponse.json({ episodes: data ?? [] });
+  }
 
   const { data } = await supabaseAdmin
     .from("series")
@@ -129,4 +144,86 @@ export async function GET() {
     .order("created_at", { ascending: false })
     .limit(200);
   return NextResponse.json({ series: data ?? [] });
+}
+
+/**
+ * DELETE /api/series/ingest
+ * Admin-only. Two modes:
+ *   { mode: 'series', id }            → delete a series and all its episodes
+ *   { mode: 'episode', episodeId }    → delete one episode and fix series counters
+ */
+export async function DELETE(req: Request) {
+  const { user, error } = await requireRole("admin", "superadmin");
+  if (error) return error;
+
+  const body = (await req.json().catch(() => null)) as
+    | { mode?: string; id?: string; episodeId?: string }
+    | null;
+  if (!body?.mode) {
+    return NextResponse.json({ error: "mode is required" }, { status: 400 });
+  }
+
+  if (body.mode === "series") {
+    if (!body.id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+
+    const { data: series } = await supabaseAdmin
+      .from("series")
+      .select("id,title")
+      .eq("id", body.id)
+      .maybeSingle();
+    if (!series) return NextResponse.json({ error: "Series not found" }, { status: 404 });
+
+    // Delete episodes first (watch_history rows referencing them cascade),
+    // then the series itself — works regardless of FK cascade configuration.
+    const { error: epErr } = await supabaseAdmin.from("episodes").delete().eq("series_id", body.id);
+    if (epErr) return NextResponse.json({ error: epErr.message }, { status: 500 });
+
+    const { error: delErr } = await supabaseAdmin.from("series").delete().eq("id", body.id);
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+
+    await supabaseAdmin.from("admin_activity_log").insert({
+      admin_user_id: user.id,
+      action: "delete_series",
+      target_id: body.id,
+      metadata: { title: series.title },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.mode === "episode") {
+    if (!body.episodeId) return NextResponse.json({ error: "episodeId is required" }, { status: 400 });
+
+    const { data: episode } = await supabaseAdmin
+      .from("episodes")
+      .select("id,series_id,season_number,episode_number")
+      .eq("id", body.episodeId)
+      .maybeSingle();
+    if (!episode) return NextResponse.json({ error: "Episode not found" }, { status: 404 });
+
+    const { error: delErr } = await supabaseAdmin.from("episodes").delete().eq("id", body.episodeId);
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+
+    // Recompute the parent series' counters from what remains.
+    const { data: remaining } = await supabaseAdmin
+      .from("episodes")
+      .select("season_number")
+      .eq("series_id", episode.series_id);
+    const rows = remaining ?? [];
+    const episodesCount = rows.length;
+    const seasonsCount = rows.reduce((max, r) => Math.max(max, r.season_number ?? 0), 0);
+    await supabaseAdmin
+      .from("series")
+      .update({ episodes_count: episodesCount, seasons_count: seasonsCount })
+      .eq("id", episode.series_id);
+
+    await supabaseAdmin.from("admin_activity_log").insert({
+      admin_user_id: user.id,
+      action: "delete_episode",
+      target_id: episode.series_id,
+      metadata: { season: episode.season_number, episode: episode.episode_number },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  return NextResponse.json({ error: "unknown mode" }, { status: 400 });
 }

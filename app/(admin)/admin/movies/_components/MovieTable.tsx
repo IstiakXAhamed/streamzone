@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2, Trash2 } from "lucide-react";
 import { DataTable, type DataTableColumn } from "@/components/admin/DataTable";
 
 interface MovieRow {
@@ -14,7 +17,47 @@ interface MovieRow {
   created_at: string;
 }
 
+function DeleteMovieButton({ movie, onDeleted }: { movie: MovieRow; onDeleted: () => void }) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleDelete() {
+    if (!confirm(`Delete "${movie.title}"? This removes it from the catalogue and cannot be undone. (The Drive file itself is not deleted.)`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/movies/ingest", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: movie.id }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        alert(body.error ?? "Failed to delete movie");
+        return;
+      }
+      onDeleted();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleDelete}
+      disabled={busy}
+      aria-label={`Delete ${movie.title}`}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[color:var(--color-text-tertiary)] transition-colors hover:bg-red-500/15 hover:text-red-400 disabled:opacity-50"
+    >
+      {busy ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+    </button>
+  );
+}
+
 export function MovieTable({ movies }: { movies: MovieRow[] }) {
+  const router = useRouter();
+
   const columns: DataTableColumn<MovieRow>[] = [
     {
       key: "title",
@@ -60,6 +103,12 @@ export function MovieTable({ movies }: { movies: MovieRow[] }) {
           ) : null}
         </span>
       ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      render: (m) => <DeleteMovieButton movie={m} onDeleted={() => router.refresh()} />,
     },
   ];
 
