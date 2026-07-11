@@ -17,6 +17,8 @@ interface Props {
   onControl?: (action: "play" | "pause" | "seek", time?: number) => void;
   /** Incoming sync command from the host (for guests). */
   syncCommand?: { action?: string; t?: number; at?: number } | null;
+  /** When true the video fills its parent (no fixed aspect ratio) — used in maximized/theater mode. */
+  fill?: boolean;
 }
 
 // Max drift allowed before forcing a seek correction (seconds)
@@ -26,7 +28,7 @@ const HOST_SYNC_INTERVAL = 2000;
 // How often guests check drift and correct (ms)
 const GUEST_DRIFT_CHECK = 1000;
 
-export function PlayerClient({ src, title, poster, movieId, isHost = true, onControl, syncCommand }: Props) {
+export function PlayerClient({ src, title, poster, movieId, isHost = true, onControl, syncCommand, fill = false }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const ignoreEvents = useRef(false);
   // Set when the browser cannot decode the file (e.g. HEVC/H.265 in Chrome, or
@@ -159,7 +161,13 @@ export function PlayerClient({ src, title, poster, movieId, isHost = true, onCon
   if (!src) return <p className="p-6 text-sm text-[color:var(--color-brand)]">Unable to load stream.</p>;
 
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
+    <div
+      className={
+        fill
+          ? "relative h-full w-full overflow-hidden bg-black"
+          : "relative aspect-video w-full overflow-hidden rounded-xl bg-black"
+      }
+    >
       <video
         ref={videoRef}
         src={src}

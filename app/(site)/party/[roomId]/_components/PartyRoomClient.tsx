@@ -6,7 +6,7 @@ import { joinPartyChannel, type PartyHandle, type PartyMessage, type PresenceUse
 import { ChatPanel, type ChatMessage } from "./ChatPanel";
 import { ParticipantStrip } from "./ParticipantStrip";
 import { LiveVoice } from "@/components/party/LiveVoice";
-import { Copy, MessageCircle, UserPlus } from "lucide-react";
+import { Copy, Maximize2, MessageCircle, Minimize2, UserPlus, X } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { useToast } from "@/components/ui/Toast";
 
@@ -28,9 +28,20 @@ export function PartyRoomClient({
   const [syncCommand, setSyncCommand] = useState<PartyMessage | null>(null);
   const [confirmedControl, setConfirmedControl] = useState<string | null>(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  // Maximized (theater) mode: app-level fullscreen that keeps chat/call
+  // accessible (native video fullscreen would clip them, esp. on iOS).
+  const [maximized, setMaximized] = useState(false);
+  const [overlayVisible, setOverlayVisible] = useState(true);
+  const [chatOpenMax, setChatOpenMax] = useState(false);
+  const overlayHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const partyRef = useRef<PartyHandle | null>(null);
   const sendRef = useRef<((msg: Omit<PartyMessage, "at">) => PartyMessage) | null>(null);
+  // Track the last host action so we don't toast on every 2s heartbeat sync.
+  const lastControlActionRef = useRef<string | null>(null);
+  // Track the last broadcast action so the host's "Broadcast" badge doesn't
+  // flash every 2s on the periodic heartbeat.
+  const lastBroadcastActionRef = useRef<string | null>(null);
 
   const handleSend = useCallback((msg: Omit<PartyMessage, "at">) => {
     sendRef.current?.(msg);
@@ -49,11 +60,14 @@ export function PartyRoomClient({
         setChat((c) => [...c, { by: msg.by, name: msg.name ?? msg.by, text: msg.text ?? "", at: msg.at }]);
       }
       if (msg.kind === "control" && msg.by !== identityId) {
-        // Apply host's control commands to our player
+        // Apply host's control commands to our player (silent — runs every 2s)
         setSyncCommand(msg);
-        if (!isHost && msg.action) {
-          push({ kind: "info", message: `Host ${msg.action === "play" ? "resumed" : msg.action === "pause" ? "paused" : "seeked"} playback` });
+        // Only toast on an ACTUAL play/pause transition, not the periodic
+        // heartbeat sync, otherwise a popup appears every couple seconds.
+        if (!isHost && (msg.action === "play" || msg.action === "pause") && msg.action !== lastControlActionRef.current) {
+          push({ kind: "info", message: `Host ${msg.action === "play" ? "resumed" : "paused"} playback` });
         }
+        if (msg.action) lastControlActionRef.current = msg.action;
       }
       if (msg.kind === "voice-sdp" || msg.kind === "voice-ice") {
         setLastVoiceMessage(msg);
@@ -94,14 +108,52 @@ export function PartyRoomClient({
       t: time,
       by: identityId,
     } as Omit<PartyMessage, "at">);
-    setConfirmedControl(action);
-    setTimeout(() => setConfirmedControl(null), 2000);
+    // Only flash the badge on an actual change, not the 2s heartbeat.
+    if (action !== lastBroadcastActionRef.current) {
+      setConfirmedControl(action);
+      setTimeout(() => setConfirmedControl(null), 2000);
+      lastBroadcastActionRef.current = action;
+    }
   }, [isHost, identityId]);
 
   function copyLink() {
     navigator.clipboard.writeText(window.location.href).catch(() => undefined);
     push({ kind: "success", message: "Party link copied — share it with friends!" });
   }
+
+  function scheduleOverlayHide() {
+    if (overlayHideTimer.current) clearTimeout(overlayHideTimer.current);
+    overlayHideTimer.current = setTimeout(() => setOverlayVisible(false), 4000);
+  }
+
+  function toggleMaximize() {
+    setMaximized((m) => {
+      const next = !m;
+      if (next) {
+        setOverlayVisible(true);
+        scheduleOverlayHide();
+      } else {
+        setChatOpenMax(false);
+      }
+      return next;
+    });
+  }
+
+  // Tapping the video in maximized mode reveals/hides the chat & call overlay.
+  function handlePlayerTap() {
+    if (!maximized) return;
+    setOverlayVisible((v) => {
+      const next = !v;
+      if (next) scheduleOverlayHide();
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    return () => {
+      if (overlayHideTimer.current) clearTimeout(overlayHideTimer.current);
+    };
+  }, []);
 
   if (identityStatus === "pending") return <Gate label="Awaiting approval" />;
   if (identityStatus === "suspended") return <Gate label="Suspended" />;
@@ -137,17 +189,90 @@ export function PartyRoomClient({
 
       <div className="grid flex-1 grid-cols-1 gap-3 p-3 lg:grid-cols-[1fr_320px] lg:p-5">
         <div className="space-y-3">
-          <PlayerBlock
-            title={initialMovieTitle}
-            streamUrl={streamUrl}
-            poster={poster}
-            mediaId={mediaId}
-            isHost={isHost}
-            onControl={handleControl}
-            syncCommand={syncCommand}
-          />
-          <LiveVoice roomId={roomId} />
-          <ParticipantStrip participants={participantList} />
+          {/* Player wrapper — becomes an app-level fullscreen layer when maximized.
+              LiveVoice stays inside this wrapper in both modes so the call is
+              never remounted (which would drop it). */}
+          <div className={maximized ? "fixed inset-0 z-[70] flex flex-col bg-black" : "relative"}>
+            <div className={maximized ? "relative min-h-0 flex-1" : "relative"} onClick={handlePlayerTap}>
+              {streamUrl ? (
+                <PlayerClient
+                  src={streamUrl}
+                  title={initialMovieTitle}
+                  poster={poster}
+                  movieId={mediaId}
+                  movie={{ slug: "party", id: mediaId }}
+                  isHost={isHost}
+                  onControl={handleControl}
+                  syncCommand={syncCommand}
+                  fill={maximized}
+                />
+              ) : (
+                <div className="grid aspect-video place-items-center rounded-xl bg-[color:var(--color-surface-2)]">
+                  <p className="text-sm text-[color:var(--color-brand)]">Could not load stream</p>
+                </div>
+              )}
+
+              {/* Maximize / minimize — gives guests (no native controls) a way to go fullscreen */}
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleMaximize(); }}
+                aria-label={maximized ? "Exit fullscreen" : "Maximize"}
+                className="absolute right-2 top-2 z-40 grid h-9 w-9 place-items-center rounded-full bg-black/60 text-white backdrop-blur-sm"
+              >
+                {maximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+
+              {/* Tap-to-reveal overlay while maximized */}
+              {maximized && overlayVisible ? (
+                <>
+                  <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 bg-gradient-to-b from-black/70 to-transparent p-3 pr-14">
+                    <span className="truncate text-sm font-medium text-white">{initialMovieTitle}</span>
+                    <span className="ml-auto rounded-full bg-white/15 px-2 py-0.5 text-xs text-white">{isHost ? "Host" : "Guest"}</span>
+                  </div>
+                  <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent p-3">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setChatOpenMax((o) => !o); }}
+                      className="inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-xs font-medium text-white"
+                    >
+                      <MessageCircle size={14} /> Chat
+                    </button>
+                  </div>
+                </>
+              ) : null}
+
+              {/* Chat panel overlay inside the maximized view */}
+              {maximized && chatOpenMax ? (
+                <div
+                  className="absolute inset-y-0 right-0 z-40 flex w-full max-w-sm flex-col bg-[color:var(--color-surface-1)] shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between border-b border-[color:var(--color-border-subtle)] p-3">
+                    <span className="text-sm font-semibold text-white">Chat</span>
+                    <button onClick={() => setChatOpenMax(false)} aria-label="Close chat" className="grid h-8 w-8 place-items-center rounded-full bg-[color:var(--color-surface-3)] text-white">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1">
+                    <ChatPanel chat={chat} onSend={handleChat} />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Voice call — same DOM position in both modes (never remounts). In
+                maximized mode it floats above the video while the overlay is shown. */}
+            <div
+              className={
+                maximized
+                  ? `absolute inset-x-0 bottom-14 z-30 px-3 ${overlayVisible ? "" : "hidden"}`
+                  : "mt-3"
+              }
+              onClick={(e) => e.stopPropagation()}
+            >
+              <LiveVoice roomId={roomId} />
+            </div>
+          </div>
+
+          {!maximized ? <ParticipantStrip participants={participantList} /> : null}
         </div>
         <aside className="hidden flex-col gap-3 lg:flex">
           <ChatPanel chat={chat} onSend={handleChat} />
@@ -161,38 +286,6 @@ export function PartyRoomClient({
         <ChatPanel chat={chat} onSend={handleChat} />
       </Sheet>
     </main>
-  );
-}
-
-function PlayerBlock({
-  title, streamUrl, poster, mediaId, isHost, onControl, syncCommand,
-}: {
-  title: string;
-  streamUrl: string;
-  poster: string | null;
-  mediaId: string;
-  isHost: boolean;
-  onControl?: (action: "play" | "pause" | "seek", time?: number) => void;
-  syncCommand?: { action?: string; t?: number } | null;
-}) {
-  if (!streamUrl) {
-    return (
-      <div className="grid aspect-video place-items-center rounded-xl bg-[color:var(--color-surface-2)]">
-        <p className="text-sm text-[color:var(--color-brand)]">Could not load stream</p>
-      </div>
-    );
-  }
-  return (
-    <PlayerClient
-      src={streamUrl}
-      title={title}
-      poster={poster}
-      movieId={mediaId}
-      movie={{ slug: "party", id: mediaId }}
-      isHost={isHost}
-      onControl={onControl}
-      syncCommand={syncCommand}
-    />
   );
 }
 
