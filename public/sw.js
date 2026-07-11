@@ -4,7 +4,7 @@
  * - Stale-while-revalidate for navigations.
  * - Offline caching for movie mp4 blobs (Range-unfriendly network).
  * Dev: skip waiting + clients.claim so the fresh worker wins immediately. */
-const CACHE_VERSION = 'moviezone-v1';
+const CACHE_VERSION = 'moviezone-v2';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const MOVIE_CACHE = `${CACHE_VERSION}-movies`;
 
@@ -52,7 +52,7 @@ self.addEventListener('fetch', (event) => {
             caches.open(MOVIE_CACHE).then((c) => c.put(request, copy)).catch(() => undefined);
             return res;
           })
-          .(() => caches.match('/offline.html')),
+          .catch(() => caches.match('/offline.html')),
       }),
     );
     return;
