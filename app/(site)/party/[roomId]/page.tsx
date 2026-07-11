@@ -11,16 +11,43 @@ export default async function PartyRoomPage({ params }: { params: Promise<{ room
 
   const room = await supabaseAdmin
     .from("watch_party_rooms")
-    .select("id,host_user_id,movie_id,created_at,friends_only")
+    .select("id,host_user_id,movie_id,episode_id,created_at,friends_only")
     .eq("id", roomId)
     .maybeSingle();
   if (!room.data) notFound();
 
-  const movie = await supabaseAdmin
-    .from("movies")
-    .select("id,title,poster_url,backdrop_url,slug,drive_file_id")
-    .eq("id", room.data.movie_id)
-    .maybeSingle();
+  // A room targets either a movie or a series episode. Resolve the title,
+  // poster, and the correct stream endpoint for whichever it is.
+  let mediaTitle = "Party";
+  let mediaPoster: string | null = null;
+  let streamUrl = "";
+
+  if (room.data.episode_id) {
+    const { data: episode } = await supabaseAdmin
+      .from("episodes")
+      .select("id,title,series_id,still_url")
+      .eq("id", room.data.episode_id)
+      .maybeSingle();
+    if (episode) {
+      const { data: parentSeries } = await supabaseAdmin
+        .from("series")
+        .select("title,poster_url")
+        .eq("id", episode.series_id)
+        .maybeSingle();
+      mediaTitle = parentSeries?.title ? `${parentSeries.title} — ${episode.title}` : episode.title;
+      mediaPoster = episode.still_url ?? parentSeries?.poster_url ?? null;
+      streamUrl = `/api/stream/episode/${episode.id}`;
+    }
+  } else if (room.data.movie_id) {
+    const { data: movie } = await supabaseAdmin
+      .from("movies")
+      .select("id,title,poster_url,backdrop_url,slug,drive_file_id")
+      .eq("id", room.data.movie_id)
+      .maybeSingle();
+    mediaTitle = movie?.title ?? "Party";
+    mediaPoster = movie?.poster_url ?? null;
+    streamUrl = `/api/stream/${room.data.movie_id}`;
+  }
 
   // Use NextAuth session (not Supabase Auth)
   const session = await getServerSession(authOptions);
@@ -69,8 +96,10 @@ export default async function PartyRoomPage({ params }: { params: Promise<{ room
   return (
     <PartyRoomClient
       roomId={roomId}
-      movieId={room.data.movie_id}
-      initialMovieTitle={movie.data?.title ?? "Party"}
+      mediaId={room.data.episode_id ?? room.data.movie_id}
+      streamUrl={streamUrl}
+      initialMovieTitle={mediaTitle}
+      poster={mediaPoster}
       hostUserId={room.data.host_user_id}
       identityId={identityId}
       identityName={identityName}

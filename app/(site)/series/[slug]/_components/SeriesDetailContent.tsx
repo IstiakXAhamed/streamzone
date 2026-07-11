@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Users } from "lucide-react";
 
 interface Series {
   id: string; title: string; slug: string; description: string | null;
@@ -22,9 +24,30 @@ export function SeriesDetailContent({
   series: Series;
   seasons: Record<number, Episode[]>;
 }) {
+  const router = useRouter();
   const seasonNumbers = Object.keys(seasons).map(Number).sort((a, b) => a - b);
   const [activeSeason, setActiveSeason] = useState(seasonNumbers[0] ?? 1);
   const activeEpisodes = seasons[activeSeason] ?? [];
+  const [partyBusy, setPartyBusy] = useState<string | null>(null);
+
+  async function startEpisodeParty(episodeId: string) {
+    setPartyBusy(episodeId);
+    try {
+      const res = await fetch("/api/party", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ episodeId }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { roomId?: string; error?: string };
+      if (!body.roomId) {
+        alert(body.error ?? "Failed to create watch party");
+        return;
+      }
+      router.push(`/party/${body.roomId}`);
+    } finally {
+      setPartyBusy(null);
+    }
+  }
 
   return (
     <article>
@@ -97,7 +120,17 @@ export function SeriesDetailContent({
                   </p>
                 </div>
               </div>
-              <Link href={`/watch/episode/${ep.id}`} className="rounded-full bg-[color:var(--color-brand)] px-4 py-1.5 text-xs font-semibold text-white">▶ Watch</Link>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => startEpisodeParty(ep.id)}
+                  disabled={partyBusy === ep.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-[color:var(--color-surface-3)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[color:var(--color-surface-4)] disabled:opacity-50"
+                  title="Start a watch party for this episode"
+                >
+                  <Users size={13} /> {partyBusy === ep.id ? "…" : "Party"}
+                </button>
+                <Link href={`/watch/episode/${ep.id}`} className="rounded-full bg-[color:var(--color-brand)] px-4 py-1.5 text-xs font-semibold text-white">▶ Watch</Link>
+              </div>
             </li>
           ))}
         </ul>

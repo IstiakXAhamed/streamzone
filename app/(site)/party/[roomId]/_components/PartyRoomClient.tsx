@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PlayerClient } from "@/components/player/PlayerClient";
-import { useStreamUrl } from "@/hooks/useStreamUrl";
 import { joinPartyChannel, type PartyHandle, type PartyMessage, type PresenceUser } from "@/lib/partyChannel";
 import { ChatPanel, type ChatMessage } from "./ChatPanel";
 import { ParticipantStrip } from "./ParticipantStrip";
@@ -12,15 +11,15 @@ import { Sheet } from "@/components/ui/Sheet";
 import { useToast } from "@/components/ui/Toast";
 
 export function PartyRoomClient({
-  roomId, movieId, initialMovieTitle, hostUserId,
+  roomId, mediaId, streamUrl, initialMovieTitle, poster, hostUserId,
   identityId, identityName, identityStatus,
 }: {
-  roomId: string; movieId: string; initialMovieTitle: string;
+  roomId: string; mediaId: string; streamUrl: string; initialMovieTitle: string;
+  poster: string | null;
   hostUserId: string; identityId: string | null; identityName: string;
   identityStatus: string | null;
 }) {
   const isHost = identityId === hostUserId;
-  const { data: stream, error: streamError, isLoading } = useStreamUrl(movieId);
   const { push } = useToast();
 
   const [participants, setParticipants] = useState<PresenceUser[]>([]);
@@ -140,11 +139,9 @@ export function PartyRoomClient({
         <div className="space-y-3">
           <PlayerBlock
             title={initialMovieTitle}
-            stream={stream}
-            streamError={streamError?.message ?? null}
-            isLoading={isLoading}
-            movieId={movieId}
-            movie={{ slug: "party", id: movieId }}
+            streamUrl={streamUrl}
+            poster={poster}
+            mediaId={mediaId}
             isHost={isHost}
             onControl={handleControl}
             syncCommand={syncCommand}
@@ -168,21 +165,35 @@ export function PartyRoomClient({
 }
 
 function PlayerBlock({
-  title, stream, streamError, isLoading, movieId, movie, isHost, onControl, syncCommand,
+  title, streamUrl, poster, mediaId, isHost, onControl, syncCommand,
 }: {
   title: string;
-  stream: { url: string; id: string; title: string } | undefined;
-  streamError: string | null;
-  isLoading: boolean;
-  movieId: string;
-  movie: { slug: string; id: string };
+  streamUrl: string;
+  poster: string | null;
+  mediaId: string;
   isHost: boolean;
   onControl?: (action: "play" | "pause" | "seek", time?: number) => void;
   syncCommand?: { action?: string; t?: number } | null;
 }) {
-  if (isLoading) return <div className="grid aspect-video place-items-center rounded-xl bg-[color:var(--color-surface-2)]"><p className="text-sm">Preparing stream…</p></div>;
-  if (streamError || !stream) return <div className="grid aspect-video place-items-center rounded-xl bg-[color:var(--color-surface-2)]"><p className="text-sm text-[color:var(--color-brand)]">{streamError ?? "Could not load"}</p></div>;
-  return <PlayerClient src={stream.url} title={title} poster={null} movieId={movieId} movie={movie} isHost={isHost} onControl={onControl} syncCommand={syncCommand} />;
+  if (!streamUrl) {
+    return (
+      <div className="grid aspect-video place-items-center rounded-xl bg-[color:var(--color-surface-2)]">
+        <p className="text-sm text-[color:var(--color-brand)]">Could not load stream</p>
+      </div>
+    );
+  }
+  return (
+    <PlayerClient
+      src={streamUrl}
+      title={title}
+      poster={poster}
+      movieId={mediaId}
+      movie={{ slug: "party", id: mediaId }}
+      isHost={isHost}
+      onControl={onControl}
+      syncCommand={syncCommand}
+    />
+  );
 }
 
 function Gate({ label, to }: { label: string; to?: string }) {

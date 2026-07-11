@@ -21,22 +21,36 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Account not approved" }, { status: 403 });
   }
 
-  const { movieId, friendsOnly } = (await req.json()) as { movieId?: string; friendsOnly?: boolean };
-  if (!movieId) return NextResponse.json({ error: "movieId required" }, { status: 400 });
+  const { movieId, episodeId, friendsOnly } = (await req.json()) as {
+    movieId?: string;
+    episodeId?: string;
+    friendsOnly?: boolean;
+  };
+  if (!movieId && !episodeId) {
+    return NextResponse.json({ error: "movieId or episodeId required" }, { status: 400 });
+  }
 
-  // Check if user already has a room for this movie
-  const found = await supabaseAdmin
+  // Reuse an existing room this host already opened for the same title.
+  const dedupe = supabaseAdmin
     .from("watch_party_rooms")
     .select("id")
-    .eq("host_user_id", urow.id)
-    .eq("movie_id", movieId)
-    .maybeSingle();
+    .eq("host_user_id", urow.id);
+  const found = await (episodeId
+    ? dedupe.eq("episode_id", episodeId)
+    : dedupe.eq("movie_id", movieId!)
+  ).maybeSingle();
 
   if (found.data?.id) return NextResponse.json({ roomId: found.data.id, created: false });
 
   const { data: row, error: err } = await supabaseAdmin
     .from("watch_party_rooms")
-    .insert({ host_user_id: urow.id, movie_id: movieId, is_private: false, friends_only: friendsOnly ?? false })
+    .insert({
+      host_user_id: urow.id,
+      movie_id: movieId ?? null,
+      episode_id: episodeId ?? null,
+      is_private: false,
+      friends_only: friendsOnly ?? false,
+    })
     .select("id")
     .single();
   if (err) return NextResponse.json({ error: err.message }, { status: 500 });

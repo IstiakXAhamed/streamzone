@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Plus } from "lucide-react";
+import { DriveFilePicker } from "@/app/(admin)/admin/movies/_components/DriveFilePicker";
 
 interface FormValues {
   title: string;
@@ -12,10 +13,12 @@ interface FormValues {
   genre: string;
   status: "ongoing" | "completed" | "hiatus";
   isPublic: boolean;
+  posterDriveFileId: string;
+  backdropDriveFileId: string;
 }
 const defaults: FormValues = {
   title: "", slug: "", description: "", year: "", genre: "",
-  status: "ongoing", isPublic: true,
+  status: "ongoing", isPublic: true, posterDriveFileId: "", backdropDriveFileId: "",
 };
 
 export function AddSeriesButton({ onCreated }: { onCreated: () => void }) {
@@ -24,7 +27,7 @@ export function AddSeriesButton({ onCreated }: { onCreated: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
 
-  const { register, handleSubmit, reset } = useForm<FormValues>({ defaultValues: defaults });
+  const { register, handleSubmit, reset, setValue } = useForm<FormValues>({ defaultValues: defaults });
 
   async function submit(v: FormValues) {
     setBusy(true); setErr(null); setOk(false);
@@ -41,6 +44,8 @@ export function AddSeriesButton({ onCreated }: { onCreated: () => void }) {
           genre: v.genre.split(",").map((g) => g.trim()).filter(Boolean),
           status: v.status,
           isPublic: v.isPublic,
+          posterDriveFileId: v.posterDriveFileId || null,
+          backdropDriveFileId: v.backdropDriveFileId || null,
         }),
       });
       if (!res.ok) {
@@ -84,6 +89,16 @@ export function AddSeriesButton({ onCreated }: { onCreated: () => void }) {
                 <option value="hiatus">Hiatus</option>
               </select>
             </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Poster image">
+                <DriveFilePicker label="Upload poster" accept="image/*" onPicked={(id) => setValue("posterDriveFileId", id)} />
+                <input type="hidden" {...register("posterDriveFileId")} />
+              </Field>
+              <Field label="Backdrop image">
+                <DriveFilePicker label="Upload backdrop" accept="image/*" onPicked={(id) => setValue("backdropDriveFileId", id)} />
+                <input type="hidden" {...register("backdropDriveFileId")} />
+              </Field>
+            </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" {...register("isPublic")} /> Public</label>
             {err && <p className="text-xs text-[color:var(--color-brand)]">{err}</p>}
             {ok && <p className="text-xs text-emerald-400">Series created.</p>}
