@@ -52,8 +52,8 @@ export function ProfileContent({
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-      <header className="mb-8 flex flex-wrap items-center gap-4">
-        <div className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-full bg-[color:var(--color-surface-2)]">
+      <header className="mb-8 flex items-center gap-4">
+        <div className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-[color:var(--color-surface-2)] sm:h-20 sm:w-20">
           {user.image ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={user.image} alt="" className="h-full w-full object-cover" />
@@ -66,10 +66,10 @@ export function ProfileContent({
             <Pencil aria-hidden="true" className="h-5 w-5 text-white" />
           </div>
         </div>
-        <div>
-          <h1 className="text-heading">{user.name ?? "Your profile"}</h1>
-          <p className="text-sm text-[color:var(--color-text-secondary)]">{user.email}</p>
-          <div className="mt-1 flex items-center gap-2">
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-bold sm:text-3xl">{user.name ?? "Your profile"}</h1>
+          <p className="truncate text-sm text-[color:var(--color-text-secondary)]">{user.email}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-[color:var(--color-surface-3)] px-2 py-0.5 text-xs font-semibold uppercase text-[color:var(--color-text-secondary)]">
               {user.role}
             </span>
@@ -78,18 +78,18 @@ export function ProfileContent({
         </div>
       </header>
 
-      <section className="mb-8 grid grid-cols-3 gap-3">
-        <div className="rounded-xl bg-[color:var(--color-surface-2)] p-4 text-center">
-          <p className="text-title">{stats.uniqueMovies}</p>
-          <p className="text-xs text-[color:var(--color-text-tertiary)]">Movies watched</p>
+      <section className="mb-8 grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="rounded-xl bg-[color:var(--color-surface-2)] p-3 text-center sm:p-4">
+          <p className="text-xl font-bold sm:text-2xl">{stats.uniqueMovies}</p>
+          <p className="text-[11px] leading-tight text-[color:var(--color-text-tertiary)] sm:text-xs">Movies watched</p>
         </div>
-        <div className="rounded-xl bg-[color:var(--color-surface-2)] p-4 text-center">
-          <p className="text-title">{stats.totalHours}</p>
-          <p className="text-xs text-[color:var(--color-text-tertiary)]">Hours watched</p>
+        <div className="rounded-xl bg-[color:var(--color-surface-2)] p-3 text-center sm:p-4">
+          <p className="text-xl font-bold sm:text-2xl">{stats.totalHours}</p>
+          <p className="text-[11px] leading-tight text-[color:var(--color-text-tertiary)] sm:text-xs">Hours watched</p>
         </div>
-        <div className="rounded-xl bg-[color:var(--color-surface-2)] p-4 text-center">
-          <p className="text-title">{stats.favoriteGenre ?? "None"}</p>
-          <p className="text-xs text-[color:var(--color-text-tertiary)]">Favorite genre</p>
+        <div className="rounded-xl bg-[color:var(--color-surface-2)] p-3 text-center sm:p-4">
+          <p className="truncate text-xl font-bold sm:text-2xl">{stats.favoriteGenre ?? "None"}</p>
+          <p className="text-[11px] leading-tight text-[color:var(--color-text-tertiary)] sm:text-xs">Favorite genre</p>
         </div>
       </section>
 

@@ -11,9 +11,13 @@ export interface EmptyStateProps {
   illustration: ReactNode;
   title: string;
   body: string;
-  cta?: { label: string; href: string };
+  /** Provide `href` for navigation, or `onClick` for an in-page action (e.g. switch tab). */
+  cta?: { label: string; href?: string; onClick?: () => void };
   className?: string;
 }
+
+const CTA_CLASS =
+  "relative mt-2 inline-flex h-10 items-center justify-center rounded-full bg-[color:var(--color-brand)] px-5 text-sm font-medium text-[color:var(--color-brand-contrast)] transition-colors duration-150 [transition-timing-function:var(--ease-out)] hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-brand)]";
 
 export function EmptyState({ illustration, title, body, cta, className = "" }: EmptyStateProps) {
   return (
@@ -31,12 +35,15 @@ export function EmptyState({ illustration, title, body, cta, className = "" }: E
       <h3 className="relative text-title">{title}</h3>
       <p className="relative max-w-sm text-body text-[color:var(--color-text-secondary)]">{body}</p>
       {cta ? (
-        <Link
-          href={cta.href}
-          className="relative mt-2 inline-flex h-10 items-center justify-center rounded-full bg-[color:var(--color-brand)] px-5 text-sm font-medium text-[color:var(--color-brand-contrast)] transition-colors duration-150 [transition-timing-function:var(--ease-out)] hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--color-brand)]"
-        >
-          {cta.label}
-        </Link>
+        cta.onClick ? (
+          <button type="button" onClick={cta.onClick} className={CTA_CLASS}>
+            {cta.label}
+          </button>
+        ) : cta.href ? (
+          <Link href={cta.href} className={CTA_CLASS}>
+            {cta.label}
+          </Link>
+        ) : null
       ) : null}
     </div>
   );

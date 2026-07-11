@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Search, UserPlus, Users } from "lucide-react";
+import { Check, Search, UserMinus, UserPlus, Users } from "lucide-react";
 import { Tabs } from "@/components/ui/Tabs";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { isOnline } from "@/lib/ui/presence";
@@ -150,7 +150,7 @@ export function FriendsContent() {
             illustration={<Users aria-hidden="true" className="h-10 w-10" />}
             title="No friends yet"
             body="Search the Discover tab to find people and send a friend request."
-            cta={{ label: "Add a Friend", href: "#" }}
+            cta={{ label: "Add a Friend", onClick: () => setTab("discover") }}
           />
         ) : (
           <ul className="space-y-2">
@@ -166,30 +166,35 @@ export function FriendsContent() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.3, ease: [0, 0, 0.2, 1] }}
-                    className="flex items-center justify-between rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-1)] px-4 py-3"
+                    className="flex items-center justify-between gap-2 rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-1)] px-3 py-3 sm:px-4"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                       <span
                         aria-hidden="true"
-                        className={["h-2 w-2 rounded-full", online ? "bg-[color:var(--color-success)]" : "bg-[color:var(--color-text-tertiary)]"].join(" ")}
+                        className={["h-2 w-2 shrink-0 rounded-full", online ? "bg-[color:var(--color-success)]" : "bg-[color:var(--color-text-tertiary)]"].join(" ")}
                       />
-                      <div>
-                        <p className="text-sm font-medium">{f.user?.name ?? "Unnamed"}</p>
-                        <p className="text-xs text-[color:var(--color-text-tertiary)]">{f.user?.email}</p>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{f.user?.name ?? "Unnamed"}</p>
+                        <p className="truncate text-xs text-[color:var(--color-text-tertiary)]">{f.user?.email}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex shrink-0 items-center gap-1.5">
                       <a
                         href="/party/create"
-                        className="rounded-full bg-[color:var(--color-surface-3)] px-3 py-1 text-xs font-medium hover:bg-[color:var(--color-surface-4)]"
+                        aria-label="Invite to watch party"
+                        title="Invite to watch party"
+                        className="inline-flex items-center gap-1 rounded-full bg-[color:var(--color-surface-3)] px-3 py-1.5 text-xs font-medium hover:bg-[color:var(--color-surface-4)]"
                       >
-                        Invite to Watch Party
+                        <Users aria-hidden="true" size={13} />
+                        <span className="hidden sm:inline">Watch Party</span>
                       </a>
                       <button
                         onClick={() => removeFriend(f.id)}
-                        className="text-xs text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-brand)]"
+                        aria-label={`Remove ${f.user?.name ?? "friend"}`}
+                        title="Remove friend"
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[color:var(--color-text-tertiary)] hover:bg-red-500/15 hover:text-red-400"
                       >
-                        Remove
+                        <UserMinus aria-hidden="true" size={15} />
                       </button>
                     </div>
                   </motion.li>
@@ -207,7 +212,7 @@ export function FriendsContent() {
               illustration={<UserPlus aria-hidden="true" className="h-10 w-10" />}
               title="No pending requests"
               body="Requests you send or receive will show up here."
-              cta={{ label: "Add a Friend", href: "#" }}
+              cta={{ label: "Add a Friend", onClick: () => setTab("discover") }}
             />
           ) : (
             <>
@@ -227,10 +232,10 @@ export function FriendsContent() {
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, transition: { duration: 0.2 } }}
                           transition={{ duration: 0.3, ease: [0, 0, 0.2, 1] }}
-                          className="flex items-center justify-between rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-1)] px-4 py-3"
+                          className="flex items-center justify-between gap-2 rounded-xl border border-[color:var(--color-border-subtle)] bg-[color:var(--color-surface-1)] px-4 py-3"
                         >
-                          <span className="text-sm">{f.user?.name ?? f.user?.email ?? "Unknown"}</span>
-                          <div className="flex gap-2">
+                          <span className="min-w-0 truncate text-sm">{f.user?.name ?? f.user?.email ?? "Unknown"}</span>
+                          <div className="flex shrink-0 gap-2">
                             <button
                               onClick={() => handleAction(f.id, "accept")}
                               aria-label="Accept request"
@@ -258,9 +263,9 @@ export function FriendsContent() {
                   <h2 className="mb-2 text-sm font-semibold text-[color:var(--color-text-secondary)]">Sent requests</h2>
                   <ul className="space-y-1">
                     {pendingOut.map((f) => (
-                      <li key={f.id} className="flex items-center justify-between rounded-lg bg-[color:var(--color-surface-1)] px-3 py-2 text-sm">
-                        <span>{f.user?.name ?? f.user?.email ?? "Unknown"}</span>
-                        <span className="text-xs text-[color:var(--color-text-tertiary)]">Pending</span>
+                      <li key={f.id} className="flex items-center justify-between gap-2 rounded-lg bg-[color:var(--color-surface-1)] px-3 py-2 text-sm">
+                        <span className="min-w-0 truncate">{f.user?.name ?? f.user?.email ?? "Unknown"}</span>
+                        <span className="shrink-0 text-xs text-[color:var(--color-text-tertiary)]">Pending</span>
                       </li>
                     ))}
                   </ul>
@@ -307,9 +312,9 @@ export function FriendsContent() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: searchDelays[i] / 1000, duration: 0.2 }}
-                    className="flex items-center justify-between rounded-lg bg-[color:var(--color-surface-2)] px-3 py-2 text-sm"
+                    className="flex items-center justify-between gap-2 rounded-lg bg-[color:var(--color-surface-2)] px-3 py-2 text-sm"
                   >
-                    <span>{u.name ?? u.email}</span>
+                    <span className="min-w-0 truncate">{u.name ?? u.email}</span>
                     <motion.button
                       onClick={() => sendRequest(u.email)}
                       disabled={pending}
